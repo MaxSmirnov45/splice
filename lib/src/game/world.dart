@@ -21,6 +21,14 @@ class Ability {
   /// Drives the aura's pulse and the orbit's rotation, purely visual.
   double visualPhase = 0;
 
+  /// True when the trigger's condition is not currently met, so the ability
+  /// will not fire however much cooldown it has.
+  ///
+  /// The HUD needs this: a cooldown sweep alone implies readiness, so a
+  /// While-Still ability looked identical whether it was about to fire or
+  /// blocked because the player was moving.
+  bool waiting = false;
+
   Ability(this.genome, this.slot);
 }
 
@@ -284,7 +292,11 @@ class World {
       if (a.cooldown > 0) a.cooldown -= dt;
 
       final def = triggerDefs[a.genome.trigger]!;
-      if (def.eventDriven && selfStarting) continue; // fired by _flushEvents
+      if (def.eventDriven && selfStarting) {
+        // Waiting on an event rather than a clock.
+        a.waiting = true;
+        continue; // fired by _flushEvents
+      }
 
       var allowed = true;
       switch (a.genome.trigger) {
@@ -300,6 +312,7 @@ class World {
         default:
           allowed = true;
       }
+      a.waiting = !allowed;
       if (allowed && a.cooldown <= 0) _activate(a);
     }
 
@@ -332,6 +345,7 @@ class World {
 
   void _activate(Ability a) {
     a.cooldown = a.genome.cooldown;
+    a.waiting = false;
     onSound?.call('shoot');
     _fire(a);
     // Echo re-fires immediately. Rolled per activation, so a high-echo genome
