@@ -1,0 +1,67 @@
+name: Deploy web build to GitHub Pages
+
+# Builds the Flutter web bundle and publishes it to GitHub Pages on every push
+# to main. Nothing needs to be committed from build/ — the site is produced
+# here and handed straight to Pages.
+on:
+  push:
+    branches: [main]
+  # Lets you re-deploy from the Actions tab without pushing anything.
+  workflow_dispatch:
+
+# Pages deployment needs these; the default token is read-only.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time. In-progress runs finish rather than being cancelled,
+# so a half-uploaded site never goes live.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify
+        run: |
+          flutter analyze
+          flutter test
+
+      - name: Build web
+        # base-href must match the path the site is served from. A project
+        # site lives at <user>.github.io/<repo>/, so the repo name is the
+        # subpath; getting this wrong means every asset 404s and the page
+        # loads to a blank screen.
+        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+
+      - name: Disable Jekyll
+        # Pages runs Jekyll by default, which silently drops files and folders
+        # beginning with an underscore.
+        run: touch build/web/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
