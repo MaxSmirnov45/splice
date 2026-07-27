@@ -50,6 +50,33 @@
       overscroll-behavior: none;
     }
   </style>
+  <script>
+    // Flutter web delivers key events to its view element, not the document.
+    // If that element never takes focus — a fresh page load, or the player
+    // clicking browser chrome first — WASD silently goes nowhere while touch
+    // and mouse keep working, which is exactly the reported symptom.
+    //
+    // Grab focus once the view exists, and again on any pointer interaction.
+    (function ensureGameFocus() {
+      function focusView() {
+        var v = document.querySelector('flutter-view') ||
+                document.querySelector('flt-glass-pane') ||
+                document.body;
+        if (v && typeof v.focus === 'function') {
+          if (v.getAttribute && v.getAttribute('tabindex') === null) {
+            v.setAttribute('tabindex', '-1');
+          }
+          v.focus({ preventScroll: true });
+        }
+      }
+      window.addEventListener('load', function () { setTimeout(focusView, 300); });
+      // Portals embed the game in an iframe, where focus follows the first
+      // interaction rather than the load.
+      ['pointerdown', 'touchstart', 'click'].forEach(function (evt) {
+        window.addEventListener(evt, focusView, { passive: true });
+      });
+    })();
+  </script>
 </head>
 <body>
   <!--

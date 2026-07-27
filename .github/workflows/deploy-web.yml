@@ -48,7 +48,14 @@ jobs:
         # site lives at <user>.github.io/<repo>/, so the repo name is the
         # subpath; getting this wrong means every asset 404s and the page
         # loads to a blank screen.
-        run: flutter build web --release --base-href "/${{ github.event.repository.name }}/"
+        # Leaderboard credentials come from repo Secrets, never the source.
+        # The publishable key is designed to be readable in a client bundle;
+        # row-level security is what bounds what it can do.
+        run: |
+          flutter build web --release \
+            --base-href "/${{ github.event.repository.name }}/" \
+            --dart-define=SUPABASE_URL="${{ secrets.SUPABASE_URL }}" \
+            --dart-define=SUPABASE_ANON_KEY="${{ secrets.SUPABASE_ANON_KEY }}"
 
       - name: Disable Jekyll
         # Pages runs Jekyll by default, which silently drops files and folders
