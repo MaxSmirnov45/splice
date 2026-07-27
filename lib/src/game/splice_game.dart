@@ -41,7 +41,8 @@ class SpliceGame extends FlameGame {
   late sim.World state;
   late final Renderer renderer;
   final TouchController touch = TouchController();
-  final KeyboardController keys = KeyboardController();
+  /// Set by the screen so the game can read keyboard steering.
+  KeyboardController? keys;
   final Sfx sfx = Sfx();
 
   bool bootComplete = false;
@@ -135,11 +136,11 @@ class SpliceGame extends FlameGame {
       // standing still, which is what a screenshot needs to look alive.
       state.inputX = math.cos(_demoClock * 0.9);
       state.inputY = math.sin(_demoClock * 0.9);
-    } else if (keys.active) {
+    } else if (keys != null && keys!.active) {
       // Keyboard wins while a direction is held; releasing it hands control
       // straight back to the joystick without either needing to be reset.
-      state.inputX = keys.dx;
-      state.inputY = keys.dy;
+      state.inputX = keys!.dx;
+      state.inputY = keys!.dy;
     } else {
       state.inputX = touch.dx;
       state.inputY = touch.dy;

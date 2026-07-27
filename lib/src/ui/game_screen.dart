@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../core/ads.dart';
 import '../core/save.dart';
+import '../game/game_input.dart';
 import '../game/splice_game.dart';
 import 'ability_card.dart';
 import 'hud.dart';
@@ -52,18 +53,29 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// records path by dying, or by quitting from the pause menu.
   bool _runRecorded = false;
 
-  /// Keeps keyboard focus on the game surface so WASD reaches it.
-  final FocusNode _focus = FocusNode();
+  /// Global key routing. Not focus-based — see [GameInput].
+  late final GameInput _input;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _input = GameInput(
+      onEscape: () {
+        if (_showPause) {
+          _closePause();
+        } else if (!_inputBlocked) {
+          _openPause();
+        }
+      },
+      blocked: () => _inputBlocked,
+    )..install();
     _ads = createAdService();
     // Fire and forget: a missing or failing ad network simply means the revive
     // option is never offered.
     _ads.initialize();
     _game = SpliceGame()
+      ..keys = _input.keys
       ..onLevelUp = _handleLevelUp
       ..onGameOver = _handleGameOver
       ..onReady = () {
@@ -84,7 +96,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _focus.dispose();
+    _input.dispose();
     _ads.dispose();
     super.dispose();
   }
@@ -242,28 +254,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   bool get _inputBlocked => _showSplice || _showGameOver || _showPause;
 
-  /// Handles keyboard steering, plus Escape to pause.
-  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
-    if (event is KeyDownEvent &&
-        event.logicalKey == LogicalKeyboardKey.escape) {
-      if (_showPause) {
-        _closePause();
-      } else if (!_inputBlocked) {
-        _openPause();
-      }
-      return KeyEventResult.handled;
-    }
-    if (_inputBlocked) {
-      // Menus must not leave a direction stuck down; the key-up will land on
-      // the menu, never on the game.
-      _game.keys.clear();
-      return KeyEventResult.ignored;
-    }
-    return _game.keys.handle(event)
-        ? KeyEventResult.handled
-        : KeyEventResult.ignored;
-  }
-
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -282,37 +272,32 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            Focus(
-              focusNode: _focus,
-              autofocus: true,
-              onKeyEvent: _onKey,
-              child: Listener(
-                behavior: HitTestBehavior.deferToChild,
-                onPointerSignal: (e) {
-                  // Mouse wheel zooms on a laptop, mirroring the pinch gesture.
-                  if (e is PointerScrollEvent && !_inputBlocked) {
-                    setState(() {
-                      _game.touch.nudgeZoom(-e.scrollDelta.dy / 500);
-                    });
-                  }
-                },
-                onPointerDown: (e) {
-                  if (_inputBlocked) return;
-                  _game.touch.down(e.pointer, e.localPosition);
-                },
-                onPointerMove: (e) {
-                  if (_inputBlocked) return;
-                  _game.touch.move(e.pointer, e.localPosition);
-                },
-                onPointerUp: (e) => _game.touch.up(e.pointer),
-                onPointerCancel: (e) => _game.touch.up(e.pointer),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    _surface,
-                    if (!_inputBlocked) _HudOverlay(game: _game),
-                  ],
-                ),
+            Listener(
+              behavior: HitTestBehavior.deferToChild,
+              onPointerSignal: (e) {
+                // Mouse wheel zooms on a laptop, mirroring the pinch gesture.
+                if (e is PointerScrollEvent && !_inputBlocked) {
+                  setState(() {
+                    _game.touch.nudgeZoom(-e.scrollDelta.dy / 500);
+                  });
+                }
+              },
+              onPointerDown: (e) {
+                if (_inputBlocked) return;
+                _game.touch.down(e.pointer, e.localPosition);
+              },
+              onPointerMove: (e) {
+                if (_inputBlocked) return;
+                _game.touch.move(e.pointer, e.localPosition);
+              },
+              onPointerUp: (e) => _game.touch.up(e.pointer),
+              onPointerCancel: (e) => _game.touch.up(e.pointer),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _surface,
+                  if (!_inputBlocked) _HudOverlay(game: _game),
+                ],
               ),
             ),
 
