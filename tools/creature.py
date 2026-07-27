@@ -33,6 +33,10 @@ PALETTES = {
     "bone":    ["#131116", "#403c46", "#837c8e", "#cac3d2", "#f7f4fa"],
     # Reserved for the player. Warm, so the host never reads as swarm.
     "spirit":  ["#1a1206", "#5e4410", "#b8901f", "#ffd95e", "#fffbe8"],
+    # Reserved for enemy ranged attacks and the creatures that make them.
+    # A searing red-white owned by nothing the player can fire, so anything
+    # this colour on screen is unambiguously incoming.
+    "menace":  ["#200000", "#7a0400", "#e01807", "#ff5a2e", "#fff0d8"],
 }
 
 BG = (5, 6, 13, 255)
@@ -80,6 +84,13 @@ ARCHETYPES = {
     # Wave boss. Big, horned, multi-eyed.
     "elite": dict(size=35, balls=5, spread=0.22, radius=(0.30, 0.44), elong=1.02,
                   limbs=(8, 7.5, 3), limb_arc=(0, 360), eyes=4, cut=0.14, nucleus=0.12),
+    # Ranged. A bloated sac on stubby legs — reads as "carrying something",
+    # and its bulk explains why it stops to fire instead of closing.
+    "spitter": dict(size=22, balls=3, spread=0.11, radius=(0.42, 0.54), elong=0.88,
+                    limbs=(4, 3.5, 3), limb_arc=(30, 150), eyes=1, cut=0.12, nucleus=0.24),
+    # Ranged heavy. Long-bodied and horned, firing a fan from a distance.
+    "lancer": dict(size=27, balls=4, spread=0.20, radius=(0.28, 0.40), elong=1.42,
+                   limbs=(4, 9.0, 2), limb_arc=(300, 420), eyes=3, cut=0.14, nucleus=0.20),
     # The player host. Compact and symmetrical, deliberately calmer than the swarm.
     "host": dict(size=19, balls=3, spread=0.10, radius=(0.38, 0.50), elong=1.08,
                  limbs=(4, 3.5, 2), limb_arc=(35, 145), eyes=2, cut=0.14, nucleus=0.20),

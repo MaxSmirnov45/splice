@@ -21,6 +21,9 @@ class EnemyDef {
   /// Steering flavour. See [EnemyBehaviour].
   final EnemyBehaviour behaviour;
 
+  /// This archetype's ranged weapon, or null if it only threatens on contact.
+  final RangedAttack? ranged;
+
   /// Whether this archetype is worth drawing a health bar over. Reserved for
   /// the heavy units; drawing one per swarm member costs more than it tells
   /// the player.
@@ -33,6 +36,7 @@ class EnemyDef {
       required this.contactDamage,
       required this.xp,
       this.behaviour = EnemyBehaviour.chase,
+      this.ranged,
       this.showsHealthBar = false});
 
   /// Sprite radius, derived from the generator's body size. Kept slightly
@@ -52,6 +56,51 @@ enum EnemyBehaviour {
 
   /// Accelerates in bursts, pausing between lunges.
   lunge,
+
+  /// Closes to its weapon's standoff distance and shoots from there, holding
+  /// position entirely while winding up so the telegraph stays readable.
+  gunner,
+}
+
+/// An enemy's ranged weapon.
+///
+/// Every field exists to keep incoming fire fair. [windup] is the telegraph
+/// the player reacts to, [standoff] is where the shooter stops so it is never
+/// firing from inside the melee scrum, and [shotSpeed] is deliberately well
+/// under the player's own projectiles so a shot can be outrun.
+class RangedAttack {
+  final double damage;
+
+  /// Maximum firing distance. Beyond this the shooter closes in.
+  final double range;
+
+  /// Distance it tries to hold while shooting.
+  final double standoff;
+
+  /// Seconds between volleys.
+  final double interval;
+
+  /// Seconds of visible telegraph before the volley leaves the muzzle.
+  final double windup;
+
+  final double shotSpeed;
+  final double shotRadius;
+
+  /// Projectiles per volley, spread evenly across [spread] radians.
+  final int shots;
+  final double spread;
+
+  const RangedAttack({
+    required this.damage,
+    required this.range,
+    required this.standoff,
+    required this.interval,
+    required this.windup,
+    required this.shotSpeed,
+    this.shotRadius = 7,
+    this.shots = 1,
+    this.spread = 0,
+  });
 }
 
 const Map<String, EnemyDef> enemyDefs = {
@@ -72,6 +121,34 @@ const Map<String, EnemyDef> enemyDefs = {
   'weaver': EnemyDef('weaver',
       hp: 64, speed: 56, radius: 12.5, contactDamage: 12, xp: 6,
       behaviour: EnemyBehaviour.weave),
+  // Ranged. Stops well short and lobs a single slow, fat projectile. Its job
+  // is to punish standing still, not to out-damage the melee swarm.
+  'spitter': EnemyDef('spitter',
+      hp: 34, speed: 40, radius: 10, contactDamage: 5, xp: 4,
+      behaviour: EnemyBehaviour.gunner,
+      ranged: RangedAttack(
+          damage: 8,
+          range: 250,
+          standoff: 185,
+          interval: 2.9,
+          windup: 0.65,
+          shotSpeed: 165)),
+  // Ranged heavy. Fires a fan, so sidestepping is not automatically enough —
+  // the player has to read which way the spread opens.
+  'lancer': EnemyDef('lancer',
+      hp: 95, speed: 30, radius: 13, contactDamage: 9, xp: 9,
+      behaviour: EnemyBehaviour.gunner,
+      showsHealthBar: true,
+      ranged: RangedAttack(
+          damage: 10,
+          range: 330,
+          standoff: 250,
+          interval: 3.6,
+          windup: 0.85,
+          shotSpeed: 190,
+          shotRadius: 8,
+          shots: 3,
+          spread: 0.44)),
   'elite': EnemyDef('elite',
       hp: 700, speed: 34, radius: 17.5, contactDamage: 26, xp: 60,
       behaviour: EnemyBehaviour.lunge, showsHealthBar: true),
@@ -115,6 +192,24 @@ class Enemy {
   double phase = 0;
   double actionTimer = 0;
 
+  /// Seconds until this enemy may begin its next volley.
+  double fireTimer = 0;
+
+  /// Seconds left in the visible wind-up. Zero means it is not charging.
+  double windup = 0;
+
+  /// Total length of the current wind-up, so the telegraph can show progress.
+  double windupTotal = 0;
+
+  /// Aim locked in when the wind-up began, normalised.
+  ///
+  /// Locked rather than tracked so the telegraph does not lie: the line the
+  /// player sees during the wind-up is exactly where the volley will go, and
+  /// stepping out of it is therefore a real dodge rather than a coin flip.
+  double aimX = 1, aimY = 0;
+
+  bool get charging => windup > 0;
+
   /// Set on hit, drives the white damage flash.
   double flash = 0;
 
@@ -138,6 +233,12 @@ class Enemy {
     flash = 0;
     phase = 0;
     actionTimer = 0;
+    // Staggered so a wave that spawns together does not fire in unison.
+    fireTimer = d.ranged == null ? 0 : d.ranged!.interval * 0.5;
+    windup = 0;
+    windupTotal = 0;
+    aimX = 1;
+    aimY = 0;
     for (var i = 0; i < hitCooldown.length; i++) {
       hitCooldown[i] = 0;
     }
@@ -295,5 +396,41 @@ class Pool<T> {
       if (isAlive(it)) n++;
     }
     return n;
+  }
+}
+
+/// A projectile fired by an enemy.
+///
+/// A separate type from [Shot] rather than a flag on it. The two never share
+/// code paths — enemy fire cannot crit, leech, pierce, apply status or trigger
+/// anything — and keeping them apart means no player-side effect can ever be
+/// applied to incoming fire by accident.
+class Threat {
+  bool alive = false;
+
+  double x = 0, y = 0;
+  double vx = 0, vy = 0;
+  double damage = 0;
+  double radius = 7;
+
+  /// Seconds before it expires on its own, so a stray shot cannot travel the
+  /// whole map and hit the player a screen later.
+  double life = 0;
+
+  /// Rotation for rendering, and the countdown between trail motes.
+  double spin = 0;
+  double trailTimer = 0;
+
+  void spawn(double sx, double sy, double dx, double dy, RangedAttack w) {
+    alive = true;
+    x = sx;
+    y = sy;
+    vx = dx * w.shotSpeed;
+    vy = dy * w.shotSpeed;
+    damage = w.damage;
+    radius = w.shotRadius;
+    life = w.range / w.shotSpeed + 0.5;
+    spin = 0;
+    trailTimer = 0;
   }
 }

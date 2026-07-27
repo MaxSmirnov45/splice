@@ -21,6 +21,10 @@ class Ability {
   /// Drives the aura's pulse and the orbit's rotation, purely visual.
   double visualPhase = 0;
 
+  /// Seconds since this ability last fired. Only meaningful for event-driven
+  /// triggers, where it drives the idle fallback.
+  double idle = 0;
+
   /// True when the trigger's condition is not currently met, so the ability
   /// will not fire however much cooldown it has.
   ///
@@ -100,6 +104,7 @@ class World {
   final Pool<Pickup> pickupPool = Pool(400, () => Pickup(), (p) => p.alive);
   final Pool<Particle> particlePool = Pool(700, () => Particle(), (p) => p.alive);
   final Pool<Arc> arcPool = Pool(64, () => Arc(), (a) => a.alive);
+  final Pool<Threat> threatPool = Pool(220, () => Threat(), (t) => t.alive);
 
   late final SpatialHash _hash = SpatialHash(enemyPool.capacity);
 
@@ -108,6 +113,9 @@ class World {
   List<Pickup> get pickups => pickupPool.items;
   List<Particle> get particles => particlePool.items;
   List<Arc> get arcs => arcPool.items;
+
+  /// Incoming enemy fire.
+  List<Threat> get threats => threatPool.items;
 
   // --- adaptation ---------------------------------------------------------
   /// Current swarm resistance per damage type, 0..[maxResistance].
@@ -125,6 +133,13 @@ class World {
   void Function(String id)? onSound;
 
   // --- spawning -----------------------------------------------------------
+  /// Lets a test hold the swarm still.
+  ///
+  /// Without it almost nothing about an ability can be measured in isolation:
+  /// the spawner keeps feeding in enemies, and those enemies land hits, die,
+  /// and raise trigger events of their own.
+  bool spawningEnabled = true;
+
   double _spawnTimer = 0;
   double _nextEliteAt = 70;
 
@@ -149,6 +164,9 @@ class World {
     _updateAbilities(dt);
     _updateShots(dt);
     _updateEnemies(dt);
+    // After the enemies, so a shot fired this frame gets a frame of travel
+    // before it can hit — nothing ever spawns already touching the player.
+    _updateThreats(dt);
     _flushEvents();
     _updatePickups(dt);
     _updateParticles(dt);
@@ -272,30 +290,34 @@ class World {
 
   // --- abilities ----------------------------------------------------------
 
-  void _updateAbilities(double dt) {
-    // An event-driven ability cannot start itself: an on-kill effect needs
-    // something else to produce the first kill, and on-hurt needs to be hit.
-    // A loadout made entirely of them is unplayable — nothing ever fires and
-    // the run is silently over. When that happens, let them run on their
-    // cooldowns instead, which keeps the game alive without weakening the
-    // trigger in any normal loadout.
-    var selfStarting = false;
-    for (final a in abilities) {
-      if (!triggerDefs[a.genome.trigger]!.eventDriven) {
-        selfStarting = true;
-        break;
-      }
-    }
+  /// How long an event-driven ability may sit unfired before it goes off by
+  /// itself.
+  ///
+  /// An on-kill effect cannot produce the first kill and an on-crit effect
+  /// cannot land the first crit, so a loadout that never generates its own
+  /// events would be silently dead. This is the floor that prevents that.
+  ///
+  /// Deliberately a property of each ability rather than of the loadout as a
+  /// whole. It used to be the latter — event-driven abilities ran freely on
+  /// their cooldowns as long as nothing else in the organism could start
+  /// itself — which meant picking up a single timed ability silently throttled
+  /// every event-driven one the player already had. Learning something new
+  /// must never weaken what is already equipped.
+  static const double eventIdleFallback = 3.5;
 
+  void _updateAbilities(double dt) {
     for (final a in abilities) {
       a.visualPhase += dt;
       if (a.cooldown > 0) a.cooldown -= dt;
 
       final def = triggerDefs[a.genome.trigger]!;
-      if (def.eventDriven && selfStarting) {
-        // Waiting on an event rather than a clock.
-        a.waiting = true;
-        continue; // fired by _flushEvents
+      if (def.eventDriven) {
+        a.idle += dt;
+        // Shown as blocked only while its event could still plausibly arrive;
+        // once the fallback is up it really is about to fire.
+        a.waiting = a.idle < eventIdleFallback;
+        if (a.cooldown <= 0 && a.idle >= eventIdleFallback) _activate(a);
+        continue; // otherwise fired by _flushEvents
       }
 
       var allowed = true;
@@ -346,6 +368,7 @@ class World {
   void _activate(Ability a) {
     a.cooldown = a.genome.cooldown;
     a.waiting = false;
+    a.idle = 0;
     onSound?.call('shoot');
     _fire(a);
     // Echo re-fires immediately. Rolled per activation, so a high-echo genome
@@ -810,6 +833,7 @@ class World {
         }
       }
 
+      _updateRanged(e, dt);
       _steerEnemy(e, dt);
       _separate(e, i);
 
@@ -826,6 +850,115 @@ class World {
         _hurt(e.def.contactDamage);
       } else if (d2 < (touch + dodgeMargin) * (touch + dodgeMargin)) {
         // Grazed but not hit. Without this the onDodge gene never fires.
+        _queueEvent(Trigger.onDodge);
+      }
+    }
+  }
+
+  /// Runs a shooter's wind-up and volley.
+  ///
+  /// Split into an explicit charge phase rather than firing the instant the
+  /// timer elapses: without a telegraph the player has no information to act
+  /// on, and damage from off screen with no warning reads as unfair rather
+  /// than difficult.
+  void _updateRanged(Enemy e, double dt) {
+    final w = e.def.ranged;
+    if (w == null) return;
+
+    // A stunned shooter loses its volley rather than banking it, so crowd
+    // control works against ranged pressure the same way it does against melee.
+    if (e.stunTime > 0) {
+      e.windup = 0;
+      return;
+    }
+
+    if (e.charging) {
+      e.windup -= dt;
+      if (e.windup > 0) return;
+      e.windup = 0;
+      _fireVolley(e, w);
+      e.fireTimer = w.interval;
+      return;
+    }
+
+    if (e.fireTimer > 0) {
+      e.fireTimer -= dt;
+      return;
+    }
+
+    final dx = px - e.x, dy = py - e.y;
+    final dist = math.sqrt(dx * dx + dy * dy);
+    if (dist > w.range || dist < 0.001) return;
+
+    e.windup = w.windup;
+    e.windupTotal = w.windup;
+    e.aimX = dx / dist;
+    e.aimY = dy / dist;
+  }
+
+  void _fireVolley(Enemy e, RangedAttack w) {
+    final base = math.atan2(e.aimY, e.aimX);
+    for (var i = 0; i < w.shots; i++) {
+      final t = threatPool.obtain(maxScan: 64);
+      if (t == null) return;
+      // Centred fan: a single shot goes exactly down the telegraphed line.
+      final offset =
+          w.shots == 1 ? 0.0 : (i / (w.shots - 1) - 0.5) * w.spread;
+      final ang = base + offset;
+      final dx = math.cos(ang), dy = math.sin(ang);
+      // Launched from the shooter's edge so the sprite never spawns inside it.
+      t.spawn(e.x + dx * (e.radius + 3), e.y + dy * (e.radius + 3), dx, dy, w);
+    }
+    // Muzzle flash, in the same red as the shot itself.
+    for (var i = 0; i < 5; i++) {
+      final ang = base + rng.range(-0.5, 0.5);
+      _spawnParticle('spark_menace', e.x, e.y,
+          vx: math.cos(ang) * rng.range(40, 110),
+          vy: math.sin(ang) * rng.range(40, 110),
+          life: 0.3,
+          scale: 1.0,
+          drag: 0.5);
+    }
+  }
+
+  /// Advances incoming fire and resolves it against the player.
+  void _updateThreats(double dt) {
+    for (final t in threats) {
+      if (!t.alive) continue;
+
+      t.x += t.vx * dt;
+      t.y += t.vy * dt;
+      t.spin += dt * 5.5;
+
+      // A trail, so a shot crossing a busy screen still reads as travelling
+      // rather than as one more piece of scenery.
+      t.trailTimer -= dt;
+      if (t.trailTimer <= 0) {
+        t.trailTimer = 0.045;
+        _spawnParticle('spark_menace', t.x, t.y,
+            vx: rng.range(-14, 14),
+            vy: rng.range(-14, 14),
+            life: 0.28,
+            scale: 0.8,
+            drag: 0.8);
+      }
+
+      t.life -= dt;
+      if (t.life <= 0) {
+        t.alive = false;
+        continue;
+      }
+
+      final dx = px - t.x, dy = py - t.y;
+      final hit = playerRadius + t.radius;
+      final d2 = dx * dx + dy * dy;
+      if (d2 < hit * hit) {
+        t.alive = false;
+        _burstParticles(t.x, t.y, 6, Payload.kinetic,
+            speed: 120, life: 0.32, frame: 'shard');
+        _hurt(t.damage);
+      } else if (d2 < (hit + dodgeMargin) * (hit + dodgeMargin)) {
+        // A shot that just misses counts as a dodge, same as a melee graze.
         _queueEvent(Trigger.onDodge);
       }
     }
@@ -860,6 +993,20 @@ class World {
         final nx = -dy, ny = dx;
         dx = dx * radial.clamp(-1.0, 1.0) + nx * 0.9;
         dy = dy * radial.clamp(-1.0, 1.0) + ny * 0.9;
+        break;
+      case EnemyBehaviour.gunner:
+        // Rooted while charging: a shooter that keeps drifting drags its own
+        // telegraph across the screen, and the player cannot judge a line that
+        // is still moving.
+        if (e.charging) return;
+        final w = e.def.ranged!;
+        final radial = (dist - w.standoff) / w.standoff;
+        // Backs off when crowded, closes when out of range, and strafes a
+        // little at the standoff distance so it never stands perfectly still.
+        final nx = -dy, ny = dx;
+        final drift = math.sin(e.phase * 1.4) * 0.35;
+        dx = dx * radial.clamp(-1.0, 1.0) + nx * drift;
+        dy = dy * radial.clamp(-1.0, 1.0) + ny * drift;
         break;
       case EnemyBehaviour.lunge:
         e.actionTimer -= dt;
@@ -1236,6 +1383,7 @@ class World {
   // --- spawning -----------------------------------------------------------
 
   void _updateSpawning(double dt) {
+    if (!spawningEnabled) return;
     final minutes = time / 60.0;
 
     _spawnTimer -= dt;
@@ -1264,6 +1412,11 @@ class World {
       'floater': minutes < 2.0 ? 0 : 1.6 + minutes * 0.15,
       'weaver': minutes < 3.0 ? 0 : 1.4 + minutes * 0.2,
       'brute': minutes < 4.0 ? 0 : 0.8 + minutes * 0.12,
+      // Ranged pressure arrives once the player has a build worth kiting with.
+      // Held to a modest share: incoming fire is meant to punish standing
+      // still, not to become the dominant source of damage.
+      'spitter': minutes < 1.6 ? 0 : 1.4 + minutes * 0.16,
+      'lancer': minutes < 3.5 ? 0 : 0.7 + minutes * 0.11,
     };
     final keys = weights.keys.toList();
     final idx = rng.weighted(keys.map((k) => weights[k]!).toList());

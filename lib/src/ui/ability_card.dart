@@ -173,7 +173,11 @@ class AbilityCard extends StatelessWidget {
                     // sometimes refuses to work.
                     Text(
                       genome.description,
-                      style: Skin.label(size: 9).copyWith(height: 1.45),
+                      // Large enough to read on a phone at arm's length, and
+                      // bright enough not to sink into the card. The rules of
+                      // an ability are not fine print.
+                      style: Skin.label(size: 11.5, color: Skin.text)
+                          .copyWith(height: 1.45),
                     ),
                     const SizedBox(height: 6),
                     _StatRow(genome: genome, ramp: ramp),

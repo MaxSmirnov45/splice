@@ -356,7 +356,7 @@ const Map<Trigger, TriggerDef> triggerDefs = {
   // Fires on enemy death. Snowballs in dense waves, dead weight when starved.
   Trigger.onKill: TriggerDef(
     'On Kill',
-    condition: 'each time you kill something',
+    condition: 'each time you kill something, or every few seconds if no kill comes',
     badge: 'NEEDS A KILL',
     damageMul: 0.62,
     cooldownMul: 0.25,
@@ -365,7 +365,7 @@ const Map<Trigger, TriggerDef> triggerDefs = {
   // Fires when the player is hit. Turns damage taken into a counterattack.
   Trigger.onHurt: TriggerDef(
     'On Hurt',
-    condition: 'each time you take a hit',
+    condition: 'each time you take a hit, or every few seconds if none lands',
     badge: 'WHEN HIT',
     damageMul: 2.4,
     cooldownMul: 0.5,
@@ -390,7 +390,7 @@ const Map<Trigger, TriggerDef> triggerDefs = {
   // Fires on a critical hit from any source.
   Trigger.onCrit: TriggerDef(
     'On Crit',
-    condition: 'each time any of your abilities lands a critical hit',
+    condition: 'on any critical hit you land, or every few seconds without one',
     badge: 'NEEDS A CRIT',
     damageMul: 1.35,
     cooldownMul: 0.4,
@@ -407,7 +407,7 @@ const Map<Trigger, TriggerDef> triggerDefs = {
   // Fires when an enemy attack just misses.
   Trigger.onDodge: TriggerDef(
     'On Dodge',
-    condition: 'each time an enemy attack narrowly misses you',
+    condition: 'each time an enemy attack narrowly misses, or every few seconds without one',
     badge: 'NEEDS A DODGE',
     damageMul: 1.5,
     cooldownMul: 0.35,

@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from PIL import Image, ImageDraw, ImageFilter
 
-from creature import ARCHETYPES, PALETTES, hex2rgb, render_creature
+from creature import ARCHETYPES, PALETTES, _apply_glow, hex2rgb, render_creature
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ART = os.path.join(ROOT, "art")
@@ -25,8 +25,12 @@ ATLAS_WIDTH = 512
 PAD = 2  # transparent gutter, so bilinear sampling never bleeds between frames
 
 SPECIES_PALETTE = {
-    "mote": "cyan", "crawler": "acid", "spiker": "blood", "floater": "void",
+    # Only the ranged species wear "menace", and only enemy fire is drawn in
+    # it — so red on screen always means "this can shoot you" or "this is a
+    # shot". Spiker moves off blood to keep that association exclusive.
+    "mote": "cyan", "crawler": "acid", "spiker": "magenta", "floater": "void",
     "brute": "amber", "weaver": "magenta", "elite": "bone", "host": "spirit",
+    "spitter": "menace", "lancer": "menace",
 }
 
 # Damage types. Each one owns a colour so the player can read what is hitting
@@ -116,6 +120,29 @@ def shard(size, palette):
     return Image.alpha_composite(halo, img)
 
 
+def barb(size, palette):
+    """A four-point barbed star.
+
+    Concave between the points, unlike anything the player fires, so an
+    incoming shot is identifiable from silhouette alone at thumb size.
+    """
+    ramp = [hex2rgb(c) for c in PALETTES[palette]]
+    ss = 4  # supersample, then downscale — the points are too fine to alias
+    img = Image.new("RGBA", (size * ss, size * ss), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = size * ss / 2.0
+    outer, inner = c * 0.96, c * 0.30
+    for scale, colour in ((1.0, ramp[1]), (0.72, ramp[2]), (0.44, ramp[3]), (0.20, ramp[4])):
+        pts = []
+        for i in range(8):
+            ang = math.pi * i / 4.0 - math.pi / 8.0
+            r = (outer if i % 2 == 0 else inner) * scale
+            pts.append((c + math.cos(ang) * r, c + math.sin(ang) * r))
+        d.polygon(pts, fill=colour + (255,))
+    img = img.resize((size, size), Image.LANCZOS)
+    return _apply_glow(img, ramp)
+
+
 def build_sprites():
     """Return an ordered {name: RGBA image} of everything the game draws."""
     out = {}
@@ -141,6 +168,16 @@ def build_sprites():
     out["heal"] = glow_dot(8, "acid")
     out["ring_white"] = ring(30, 2, "bone")
     out["dot_white"] = glow_dot(3, "bone")
+
+    # Enemy fire. Deliberately unlike every player effect: player projectiles
+    # are smooth orbs, shards and rings, so incoming gets a barbed star that
+    # appears nowhere else, in a colour nothing the player owns.
+    out["fang"] = barb(15, "menace")
+    out["spark_menace"] = glow_dot(4, "menace")
+    out["shard_menace"] = shard(7, "menace")
+    out["orb_menace"] = glow_dot(9, "menace")
+    # Telegraph: contracts into the enemy over the wind-up.
+    out["ring_menace"] = ring(38, 3, "menace")
     return out
 
 

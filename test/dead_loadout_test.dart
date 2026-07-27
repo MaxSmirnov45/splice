@@ -8,12 +8,17 @@ import 'package:splice/src/genome/genome.dart';
 /// on-kill effect needs something else to produce the first kill. Without a
 /// safety net the run is silently unplayable — nothing fires, ever.
 double _damageOver(World world, double seconds) {
+  // Tracked individually rather than by summing the whole pool: the spawner
+  // keeps adding enemies during the run, and their health would otherwise be
+  // counted as damage undone.
+  final marked = <Enemy>[];
   var before = 0.0;
   for (var i = 0; i < 16; i++) {
     final e = world.enemyPool.obtain();
     if (e == null) break;
     final ang = i * 0.4;
     e.spawn(enemyDefs['crawler']!, 40 * _c(ang), 40 * _s(ang), 0, 3000.0);
+    marked.add(e);
     before += e.maxHp;
   }
   for (var i = 0; i < seconds * 60; i++) {
@@ -23,7 +28,7 @@ double _damageOver(World world, double seconds) {
     world.update(1 / 60);
   }
   var after = 0.0;
-  for (final e in world.enemies) {
+  for (final e in marked) {
     if (e.alive) after += e.hp;
   }
   return before - after;
@@ -57,41 +62,99 @@ void main() {
     }
   });
 
-  test('a normal loadout keeps event triggers event-driven', () {
-    // With a self-starting ability present, an on-kill effect must NOT fall
-    // back to firing on a timer, or the trigger stops meaning anything.
-    final world = World(12);
+  // The regression this file exists for. The fallback used to be a property of
+  // the whole loadout: event-driven abilities ran freely on their cooldowns
+  // only while nothing else could start itself. Picking up one timed ability
+  // therefore throttled every event-driven ability the player already had —
+  // which is indistinguishable, in play, from the new ability breaking the old
+  // ones.
+  test('learning a timed ability does not throttle the event-driven ones', () {
+    int firingsOfStarvedEventAbility({required bool withTimedAbility}) {
+      final world = World(12);
+      world.abilities.clear();
+      // Held still, or newly spawned enemies reach the player and raise the
+      // very event this test is trying to starve.
+      world.spawningEnabled = false;
+      if (withTimedAbility) {
+        world.addAbility(Genome(
+          vector: Vector.bolt,
+          payload: Payload.kinetic,
+          trigger: Trigger.timer,
+          riders: const {},
+        ));
+      }
+      world.addAbility(Genome(
+        vector: Vector.burst,
+        payload: Payload.frost,
+        trigger: Trigger.onHurt,
+        riders: const {},
+      ));
+      final watched = world.abilities.last;
+
+      // Unkillable and out of reach, so the ability is starved of its event
+      // and only the idle fallback can fire it.
+      for (var i = 0; i < 8; i++) {
+        final e = world.enemyPool.obtain();
+        if (e == null) break;
+        e.spawn(enemyDefs['crawler']!, 900.0 + i * 3, 0, 0, 1000000.0);
+      }
+
+      var fired = 0;
+      var lastCooldown = watched.cooldown;
+      for (var i = 0; i < 60 * 20; i++) {
+        world.pendingLevelUps = 0;
+        world.gameOver = false;
+        world.hp = world.maxHp;
+        world.update(1 / 60);
+        if (watched.cooldown > lastCooldown) fired++;
+        lastCooldown = watched.cooldown;
+      }
+      return fired;
+    }
+
+    final alone = firingsOfStarvedEventAbility(withTimedAbility: false);
+    final alongside = firingsOfStarvedEventAbility(withTimedAbility: true);
+    expect(alone, greaterThan(0), reason: 'the fallback must fire it at all');
+    expect(alongside, alone,
+        reason: 'adding a timed ability changed how often the on-hurt ability '
+            'fired — learning a skill must never weaken an equipped one');
+  });
+
+  test('an event still fires its ability immediately, not on the fallback',
+      () {
+    final world = World(14);
     world.abilities.clear();
-    world.addAbility(Genome(
-      vector: Vector.bolt,
-      payload: Payload.kinetic,
-      trigger: Trigger.timer,
-      riders: const {},
-    ));
+    world.spawningEnabled = false;
     world.addAbility(Genome(
       vector: Vector.burst,
       payload: Payload.frost,
-      trigger: Trigger.onKill,
+      trigger: Trigger.onHurt,
       riders: const {},
     ));
-    final onKill = world.abilities.last;
+    final onHurt = world.abilities.single;
 
-    // Enemies too tough to die, so no kill event can ever be raised.
+    // Pressed right up against the player, so hits land constantly.
     for (var i = 0; i < 8; i++) {
       final e = world.enemyPool.obtain();
       if (e == null) break;
-      e.spawn(enemyDefs['crawler']!, 40.0 + i * 3, 0, 0, 100000.0);
+      e.spawn(enemyDefs['crawler']!, 4.0 + i, 0, 0, 1000000.0);
     }
-    for (var i = 0; i < 300; i++) {
+
+    var fired = 0;
+    var lastCooldown = onHurt.cooldown;
+    for (var i = 0; i < 60 * 10; i++) {
       world.pendingLevelUps = 0;
       world.gameOver = false;
       world.hp = world.maxHp;
       world.update(1 / 60);
+      if (onHurt.cooldown > lastCooldown) fired++;
+      lastCooldown = onHurt.cooldown;
     }
-    // Never fired, so its cooldown was never set.
-    expect(onKill.cooldown, lessThanOrEqualTo(0),
-        reason: 'on-kill fired without a kill; the fallback leaked into a '
-            'normal loadout');
+    // Ten seconds of constant hits must beat the ~3 activations the idle
+    // fallback alone would have produced.
+    expect(fired, greaterThan(5),
+        reason: 'being hit constantly must fire an on-hurt ability far more '
+            'often than the starvation fallback would');
   });
 
   test('chain and beam leave a visible arc', () {

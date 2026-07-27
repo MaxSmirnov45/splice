@@ -106,11 +106,16 @@ class Renderer {
     _drawEnemies(world);
     _drawPlayer(world);
     _drawShots(world, under: false);
+    // Above everything else it could collide with visually: a shot the player
+    // has to dodge must never be hidden behind the crowd that fired it.
+    _drawThreats(world);
     _drawParticles(world);
 
     _opaque.render(canvas, atlas.image, _opaquePaint);
     _additive.render(canvas, atlas.image, _additivePaint);
 
+    // Before the flush, since the telegraph queues a ring of its own.
+    _drawTelegraphs(canvas, world);
     _flushRings(canvas);
     _drawArcs(canvas, world);
     _drawTethers(canvas, world);
@@ -294,6 +299,78 @@ class Renderer {
     if (tier >= 5) {
       final pulse = 0.9 + 0.25 * math.sin(time * 7 + s.spin);
       _additive.add(pf.burst, s.x, s.y, scale: 0.85 * pulse, color: 0x88FFFFFF);
+    }
+  }
+
+  /// Incoming enemy fire.
+  ///
+  /// A barbed star in a colour no player ability owns, with a white-hot core
+  /// so it holds up against a screen already full of the player's own effects.
+  void _drawThreats(World world) {
+    final fang = atlas.frame('fang');
+    final core = atlas.frame('orb_menace');
+    for (final t in world.threats) {
+      if (!t.alive) continue;
+      final scale = t.radius / 6.0;
+      _additive.add(fang, t.x, t.y, rotation: t.spin, scale: scale);
+      _additive.add(core, t.x, t.y, scale: scale * 0.55);
+    }
+  }
+
+  /// The wind-up on every enemy about to shoot.
+  ///
+  /// Two signals, because one is not enough on a busy screen: a ring closing
+  /// in on the shooter, and a line down the exact path each projectile will
+  /// take. The line is the contract — the volley goes where the line pointed,
+  /// so stepping off it is always a real dodge.
+  void _drawTelegraphs(ui.Canvas canvas, World world) {
+    final ramp = atlas.palettes['menace'];
+    if (ramp == null) return;
+
+    ui.Paint? paint;
+    for (final e in world.enemies) {
+      if (!e.alive || !e.charging) continue;
+      final w = e.def.ranged;
+      if (w == null || e.windupTotal <= 0) continue;
+
+      // 0 at the start of the wind-up, 1 at the moment of firing.
+      final t = (1 - e.windup / e.windupTotal).clamp(0.0, 1.0);
+
+      paint ??= ui.Paint()
+        ..blendMode = ui.BlendMode.plus
+        ..style = ui.PaintingStyle.stroke
+        ..strokeCap = ui.StrokeCap.round;
+
+      final base = math.atan2(e.aimY, e.aimX);
+      final start = e.radius + 3;
+      for (var i = 0; i < w.shots; i++) {
+        final offset =
+            w.shots == 1 ? 0.0 : (i / (w.shots - 1) - 0.5) * w.spread;
+        final ang = base + offset;
+        final dx = math.cos(ang), dy = math.sin(ang);
+        final p = ui.Offset(e.x + dx * start, e.y + dy * start);
+        final q = ui.Offset(e.x + dx * w.range, e.y + dy * w.range);
+        // Faint and thin at first, bright and solid the instant before it
+        // fires, so the player feels the shot coming rather than reading it.
+        canvas.drawLine(
+            p,
+            q,
+            paint
+              ..strokeWidth = 1.0 + t * 2.4
+              ..color = ramp[3].withValues(alpha: 0.10 + t * 0.42));
+      }
+
+      // The closing ring. Contracting rather than expanding: everything the
+      // player fires expands, so an inward motion reads as "charging" instead
+      // of being mistaken for one of their own effects going off.
+      _rings.add(_Ring(
+        e.x,
+        e.y,
+        e.radius * (3.6 - t * 2.3),
+        ramp[4],
+        0.22 + t * 0.55,
+        1.6 + t * 1.4,
+      ));
     }
   }
 

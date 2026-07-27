@@ -44,6 +44,32 @@ void main() {
     return world;
   }
 
+  /// Taps an ability card, scrolling it clear of the pinned footer first.
+  ///
+  /// Cards carry a description now, so on a short viewport the organism list
+  /// starts below the fold and a bare tap lands on the footer instead.
+  Future<void> tapAbility(WidgetTester tester, World world, int index) async {
+    final target = find.text(world.abilities[index].genome.displayName);
+    // The list builds lazily, so a card below the fold does not exist yet and
+    // cannot even be located, let alone tapped.
+    if (target.evaluate().isEmpty) {
+      await tester.scrollUntilVisible(target, 80,
+          scrollable: find.byType(Scrollable).first);
+      await tester.pumpAndSettle();
+    }
+    // Then only as far as needed, so calling this twice in a row does not
+    // scroll straight past the second card.
+    final safeY =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio * 0.55;
+    final y = tester.getCenter(target).dy;
+    if (y > safeY) {
+      await tester.drag(find.byType(Scrollable).first, Offset(0, safeY - y));
+      await tester.pumpAndSettle();
+    }
+    await tester.tap(target);
+    await tester.pump();
+  }
+
   testWidgets('opens with nothing selected and the action disabled', (tester) async {
     await pumpScreen(tester);
     expect(find.text('SELECT AN OPTION'), findsOneWidget);
@@ -75,13 +101,11 @@ void main() {
       (tester) async {
     final world = await pumpScreen(tester);
 
-    await tester.tap(find.text(world.abilities[0].genome.displayName));
-    await tester.pump();
+    await tapAbility(tester, world, 0);
     expect(find.text('PARENT A'), findsOneWidget);
     expect(find.text('SPLICE'), findsNothing);
 
-    await tester.tap(find.text(world.abilities[1].genome.displayName));
-    await tester.pump();
+    await tapAbility(tester, world, 1);
     expect(find.text('PARENT B'), findsOneWidget);
     expect(find.text('SPLICE'), findsOneWidget);
     expect(find.text('OFFSPRING'), findsOneWidget);
@@ -148,8 +172,7 @@ void main() {
     // No free slot, so absorb is unavailable until a victim is chosen.
     expect(find.text('ABSORB'), findsNothing);
 
-    await tester.tap(find.text(world.abilities[2].genome.displayName));
-    await tester.pump();
+    await tapAbility(tester, world, 2);
     expect(find.text('REPLACE'), findsWidgets);
 
     await tester.tap(find.widgetWithText(Center, 'REPLACE').first);
@@ -195,15 +218,8 @@ void main() {
       (tester) async {
     final world = await pumpScreen(tester, screen: const Size(320, 568));
 
-    // Cards are tall enough that the organism list starts below the fold on a
-    // phone this short, so scroll it up before aiming at anything.
-    await tester.drag(find.byType(Scrollable).first, const Offset(0, -220));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text(world.abilities[0].genome.displayName));
-    await tester.pump();
-    await tester.tap(find.text(world.abilities[1].genome.displayName));
-    await tester.pump();
+    await tapAbility(tester, world, 0);
+    await tapAbility(tester, world, 1);
 
     expect(find.text('OFFSPRING'), findsOneWidget);
     expect(tester.takeException(), isNull);
