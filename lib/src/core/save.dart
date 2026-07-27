@@ -25,6 +25,9 @@ class SaveData {
   double soundVolume;
   double musicVolume;
 
+  /// Name shown on the global board. Empty until the player picks one.
+  String playerName;
+
   /// Genes encountered across all runs, stored by enum index.
   final Set<int> seenVectors;
   final Set<int> seenPayloads;
@@ -40,6 +43,7 @@ class SaveData {
     this.totalKills = 0,
     this.soundVolume = 0.85,
     this.musicVolume = 0.55,
+    this.playerName = '',
     Set<int>? seenVectors,
     Set<int>? seenPayloads,
     Set<int>? seenTriggers,
@@ -123,6 +127,7 @@ class SaveData {
         'totalKills': totalKills,
         'soundVolume': soundVolume,
         'musicVolume': musicVolume,
+        'playerName': playerName,
         'seenVectors': seenVectors.toList(),
         'seenPayloads': seenPayloads.toList(),
         'seenTriggers': seenTriggers.toList(),
@@ -140,6 +145,9 @@ class SaveData {
         // set a level outside the valid range.
         soundVolume: ((j['soundVolume'] as num?)?.toDouble() ?? 0.85).clamp(0.0, 1.0),
         musicVolume: ((j['musicVolume'] as num?)?.toDouble() ?? 0.55).clamp(0.0, 1.0),
+        // Trimmed and length-limited on read as well as write: a save file is
+        // user-writable and this string ends up on a public board.
+        playerName: ((j['playerName'] as String?) ?? '').trim(),
         seenVectors: _intSet(j['seenVectors']),
         seenPayloads: _intSet(j['seenPayloads']),
         seenTriggers: _intSet(j['seenTriggers']),

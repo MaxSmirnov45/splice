@@ -5,11 +5,13 @@ import 'package:flutter/gestures.dart' show PointerScrollEvent;
 import 'package:flutter/services.dart';
 
 import '../core/ads.dart';
+import '../core/leaderboard.dart';
 import '../core/save.dart';
 import '../game/game_input.dart';
 import '../game/splice_game.dart';
 import 'ability_card.dart';
 import 'hud.dart';
+import 'leaderboard_screen.dart';
 import 'splice_screen.dart';
 
 /// Hosts the game surface, routes raw pointer events into the joystick, and
@@ -55,6 +57,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// Global key routing. Not focus-based — see [GameInput].
   late final GameInput _input;
+
+  late final Leaderboard _leaderboard = createLeaderboard();
+  bool _showBoard = false;
+  bool _showNamePrompt = false;
+
+  /// The run just finished, held so it can be posted once a name exists and
+  /// highlighted in the board afterwards.
+  ScoreEntry? _pendingScore;
 
   @override
   void initState() {
@@ -261,7 +271,57 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     widget.onExit();
   }
 
-  bool get _inputBlocked => _showSplice || _showGameOver || _showPause;
+  bool get _inputBlocked =>
+      _showSplice ||
+      _showGameOver ||
+      _showPause ||
+      _showBoard ||
+      _showNamePrompt;
+
+  /// Builds the entry for the run that just ended.
+  ScoreEntry _entryForRun() {
+    final w = _game.state;
+    return ScoreEntry(
+      name: widget.save.playerName.isEmpty
+          ? 'anonymous'
+          : widget.save.playerName,
+      time: w.time,
+      level: w.level,
+      kills: w.kills,
+      generation: w.deepestGeneration,
+    );
+  }
+
+  /// Posts the finished run, asking for a name the first time.
+  Future<void> _postScore() async {
+    if (!_leaderboard.isAvailable) return;
+    _pendingScore = _entryForRun();
+    if (widget.save.playerName.isEmpty) {
+      setState(() => _showNamePrompt = true);
+      return;
+    }
+    await _submitPending();
+    if (mounted) setState(() => _showBoard = true);
+  }
+
+  Future<void> _submitPending() async {
+    final entry = _pendingScore;
+    if (entry == null) return;
+    // Fire and forget as far as the player is concerned: a failed submission
+    // must not block them from seeing the board or starting another run.
+    await _leaderboard.submit(entry);
+  }
+
+  void _openBoard() {
+    if (!_game.bootComplete) return;
+    _ads.gameplayStop();
+    setState(() => _showBoard = true);
+  }
+
+  void _closeBoard() {
+    setState(() => _showBoard = false);
+    if (!_showGameOver) _ads.gameplayStart();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +380,12 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onResume: _closePause,
                 onRestart: _restart,
                 onExit: _quitToMenu,
+                onLeaderboard: _leaderboard.isAvailable
+                    ? () {
+                        setState(() => _showPause = false);
+                        _openBoard();
+                      }
+                    : null,
               ),
             if (_showSplice)
               SpliceScreen(
@@ -327,12 +393,32 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 atlas: _game.atlas,
                 onDone: _closeSplice,
               ),
+            if (_showNamePrompt)
+              NamePrompt(
+                initial: widget.save.playerName,
+                onSubmit: (name) async {
+                  widget.save.playerName = name;
+                  widget.save.save();
+                  _pendingScore = _entryForRun();
+                  setState(() => _showNamePrompt = false);
+                  await _submitPending();
+                  if (mounted) setState(() => _showBoard = true);
+                },
+                onSkip: () => setState(() => _showNamePrompt = false),
+              ),
+            if (_showBoard)
+              LeaderboardScreen(
+                leaderboard: _leaderboard,
+                highlight: _pendingScore,
+                onClose: _closeBoard,
+              ),
             if (_showGameOver)
               _GameOverScreen(
                 game: _game,
                 onRestart: _restart,
                 onExit: _quitToMenu,
                 newBest: _newBest,
+                onPostScore: _leaderboard.isAvailable ? _postScore : null,
                 // Offered only when a revive remains and an ad is actually
                 // loaded, so the button never appears and then fails.
                 onReviveForAd:
@@ -518,6 +604,7 @@ class _PauseScreen extends StatefulWidget {
   final VoidCallback onResume;
   final VoidCallback onRestart;
   final VoidCallback onExit;
+  final VoidCallback? onLeaderboard;
 
   const _PauseScreen({
     required this.game,
@@ -525,6 +612,7 @@ class _PauseScreen extends StatefulWidget {
     required this.onResume,
     required this.onRestart,
     required this.onExit,
+    this.onLeaderboard,
   });
 
   @override
@@ -689,6 +777,10 @@ class _GameOverScreen extends StatelessWidget {
   final VoidCallback? onReviveForAd;
   final bool watchingAd;
 
+  /// Null when no scoreboard backend is configured, in which case the button
+  /// is not offered at all rather than shown and failing.
+  final VoidCallback? onPostScore;
+
   const _GameOverScreen({
     required this.game,
     required this.onRestart,
@@ -696,6 +788,7 @@ class _GameOverScreen extends StatelessWidget {
     required this.newBest,
     this.onReviveForAd,
     this.watchingAd = false,
+    this.onPostScore,
   });
 
   @override
