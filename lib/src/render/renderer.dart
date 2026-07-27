@@ -591,6 +591,12 @@ class KeyboardController {
 
   double dx = 0, dy = 0;
 
+  /// Raw count of key events delivered to the game, incremented before any
+  /// filtering. Diagnostic only: zero here means the browser or engine is not
+  /// delivering keys at all, which is a completely different problem from the
+  /// game ignoring them.
+  int eventsSeen = 0;
+
   /// True while any direction is held, so the game knows to prefer the
   /// keyboard over a stale joystick reading.
   bool get active => dx != 0 || dy != 0;

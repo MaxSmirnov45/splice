@@ -5,6 +5,7 @@ import '../game/entities.dart';
 import '../game/world.dart';
 import '../genome/genes.dart';
 import '../render/atlas.dart';
+import '../render/renderer.dart' show KeyboardController;
 import 'ability_card.dart';
 import 'sigil.dart';
 
@@ -13,8 +14,7 @@ import 'sigil.dart';
 /// Also enabled in demo builds so a release-mode profiling run can be read off
 /// the screen — debug numbers alone cannot tell you whether a cost is real or
 /// just JIT overhead.
-const bool showDiagnostics =
-    kDebugMode || bool.fromEnvironment('SPLICE_DEMO');
+const bool showDiagnostics = kDebugMode || bool.fromEnvironment('SPLICE_DEMO');
 
 /// In-run overlay: vitals, progress, equipped abilities, and the swarm's
 /// current resistances.
@@ -44,6 +44,9 @@ class Hud extends StatelessWidget {
   /// silent" is otherwise indistinguishable from "the volume is down".
   final bool audioReady;
 
+  /// Keyboard steering, for diagnosing input that does not arrive.
+  final KeyboardController? keys;
+
   const Hud({
     super.key,
     required this.world,
@@ -53,6 +56,7 @@ class Hud extends StatelessWidget {
     this.worstRasterMs = 0,
     this.jank = 0,
     this.audioReady = true,
+    this.keys,
   });
 
   @override
@@ -116,7 +120,12 @@ class Hud extends StatelessWidget {
               child: Container(
                 decoration: BoxDecoration(
                   color: Skin.accent,
-                  boxShadow: [BoxShadow(color: Skin.accent.withValues(alpha: 0.6), blurRadius: 6)],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Skin.accent.withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -138,12 +147,24 @@ class Hud extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            Text('$minutes:$seconds',
-                style: Skin.label(size: 19, color: Skin.text, weight: FontWeight.w700)),
+            Text(
+              '$minutes:$seconds',
+              style: Skin.label(
+                size: 19,
+                color: Skin.text,
+                weight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(width: 8),
-            Text('LV${world.level}', style: Skin.label(size: 10, color: Skin.accent)),
+            Text(
+              'LV${world.level}',
+              style: Skin.label(size: 10, color: Skin.accent),
+            ),
             const SizedBox(width: 8),
-            Text('${world.kills}', style: Skin.label(size: 10, color: Skin.dim)),
+            Text(
+              '${world.kills}',
+              style: Skin.label(size: 10, color: Skin.dim),
+            ),
           ],
         ),
         // Diagnostics get their own line. Inline they pushed the vitals row
@@ -191,17 +212,50 @@ class Hud extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (!audioReady)
-              Text('MUTE ',
-                  style: Skin.label(size: 9, color: Skin.warn, weight: FontWeight.w700)),
-            Text('${fps.round()}fps ',
-                style: Skin.label(size: 9, color: fps < 45 ? Skin.warn : Skin.dim)),
-            Text('u${worstMs.round()}/r${worstRasterMs.round()}/${jank}j ',
-                style: Skin.label(size: 9, color: jank > 0 ? Skin.warn : Skin.dim)),
+              Text(
+                'MUTE ',
+                style: Skin.label(
+                  size: 9,
+                  color: Skin.warn,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            Text(
+              '${fps.round()}fps ',
+              style: Skin.label(
+                size: 9,
+                color: fps < 45 ? Skin.warn : Skin.dim,
+              ),
+            ),
+            Text(
+              'u${worstMs.round()}/r${worstRasterMs.round()}/${jank}j ',
+              style: Skin.label(
+                size: 9,
+                color: jank > 0 ? Skin.warn : Skin.dim,
+              ),
+            ),
             // Pool occupancy: a count pinned at capacity means a leak, which is
             // far more likely than a genuine need for that many entities.
-            Text('${world.liveEnemies}e ${world.shotPool.liveCount}s '
-                '${world.particlePool.liveCount}p',
-                style: Skin.label(size: 9, color: Skin.dim)),
+            Text(
+              '${world.liveEnemies}e ${world.shotPool.liveCount}s '
+              '${world.particlePool.liveCount}p ',
+              style: Skin.label(size: 9, color: Skin.dim),
+            ),
+            // k<events> <keyboard vector> in<what the simulation received>.
+            // Zero events means keys never reach the app; events without a
+            // vector means they are being filtered; a vector without matching
+            // input means the game is not reading it.
+            Text(
+              'k${keys?.eventsSeen ?? -1} '
+              '${(keys?.dx ?? 0).toStringAsFixed(1)},'
+              '${(keys?.dy ?? 0).toStringAsFixed(1)} '
+              'in${world.inputX.toStringAsFixed(1)},'
+              '${world.inputY.toStringAsFixed(1)}',
+              style: Skin.label(
+                size: 9,
+                color: (keys?.eventsSeen ?? 0) > 0 ? Skin.accent : Skin.warn,
+              ),
+            ),
           ],
         ),
       ),
@@ -212,8 +266,9 @@ class Hud extends StatelessWidget {
   /// up resistance. This is the feedback loop that tells the player their
   /// build is going stale.
   Widget _resistances() {
-    final active = world.resistance.entries.where((e) => e.value > 0.04).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
+    final active =
+        world.resistance.entries.where((e) => e.value > 0.04).toList()
+          ..sort((a, b) => b.value.compareTo(a.value));
     if (active.isEmpty) return const SizedBox.shrink();
 
     return Column(
@@ -227,8 +282,10 @@ class Hud extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(payloadDefs[e.key]!.name.toUpperCase(),
-                    style: Skin.label(size: 7.5, color: Skin.dim)),
+                Text(
+                  payloadDefs[e.key]!.name.toUpperCase(),
+                  style: Skin.label(size: 7.5, color: Skin.dim),
+                ),
                 const SizedBox(width: 4),
                 Container(
                   width: 30,
@@ -239,7 +296,10 @@ class Hud extends StatelessWidget {
                   ),
                   child: FractionallySizedBox(
                     alignment: Alignment.centerLeft,
-                    widthFactor: (e.value / World.maxResistance).clamp(0.0, 1.0),
+                    widthFactor: (e.value / World.maxResistance).clamp(
+                      0.0,
+                      1.0,
+                    ),
                     child: Container(
                       decoration: BoxDecoration(
                         color: atlas.payloadColor(payloadDefs[e.key]!.key, 3),
@@ -251,8 +311,10 @@ class Hud extends StatelessWidget {
                 const SizedBox(width: 3),
                 SizedBox(
                   width: 20,
-                  child: Text('${(e.value * 100).round()}%',
-                      style: Skin.label(size: 7.5, color: Skin.dim)),
+                  child: Text(
+                    '${(e.value * 100).round()}%',
+                    style: Skin.label(size: 7.5, color: Skin.dim),
+                  ),
                 ),
               ],
             ),
@@ -281,7 +343,11 @@ class Hud extends StatelessWidget {
             ),
             child: Text(
               'THE SWARM ADAPTS TO ${payloadDefs[p]!.name.toUpperCase()}',
-              style: Skin.label(size: 10, color: colour, weight: FontWeight.w700),
+              style: Skin.label(
+                size: 10,
+                color: colour,
+                weight: FontWeight.w700,
+              ),
             ),
           ),
         ),
@@ -295,11 +361,7 @@ class Hud extends StatelessWidget {
         for (final a in world.abilities)
           Padding(
             padding: const EdgeInsets.only(right: 6),
-            child: _AbilityPip(
-              world: world,
-              atlas: atlas,
-              ability: a,
-            ),
+            child: _AbilityPip(world: world, atlas: atlas, ability: a),
           ),
         for (var i = world.abilities.length; i < maxAbilitySlots; i++)
           Padding(
@@ -325,13 +387,20 @@ class _AbilityPip extends StatelessWidget {
   final SpriteAtlas atlas;
   final Ability ability;
 
-  const _AbilityPip({required this.world, required this.atlas, required this.ability});
+  const _AbilityPip({
+    required this.world,
+    required this.atlas,
+    required this.ability,
+  });
 
   @override
   Widget build(BuildContext context) {
     final key = payloadDefs[ability.genome.payload]!.key;
     final ramp = atlas.palettes[atlas.payloadPalette[key] ?? 'bone']!;
-    final ready = (1 - (ability.cooldown / ability.genome.cooldown)).clamp(0.0, 1.0);
+    final ready = (1 - (ability.cooldown / ability.genome.cooldown)).clamp(
+      0.0,
+      1.0,
+    );
 
     return Stack(
       alignment: Alignment.bottomCenter,

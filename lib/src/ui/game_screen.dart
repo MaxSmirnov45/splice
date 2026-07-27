@@ -447,6 +447,7 @@ class _HudOverlayState extends State<_HudOverlay>
       worstRasterMs: _worstRasterMs,
       jank: _jank,
       audioReady: widget.game.sfx.isReady,
+      keys: widget.game.keys,
     );
   }
 }

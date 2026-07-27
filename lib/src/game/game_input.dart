@@ -39,6 +39,7 @@ class GameInput {
 
   /// Returns true when the event was consumed by the game.
   bool handleKey(KeyEvent event) {
+    keys.eventsSeen++;
     if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
       onEscape();
       return true;
