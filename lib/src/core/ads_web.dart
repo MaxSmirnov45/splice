@@ -5,6 +5,7 @@ import 'dart:js_interop_unsafe';
 import 'package:flutter/foundation.dart';
 
 import 'ads_api.dart';
+import 'ads_crazygames.dart';
 
 /// Poki SDK bindings.
 ///
@@ -129,4 +130,21 @@ class PokiAds implements RewardedAdService {
   }
 }
 
-RewardedAdService createAdService() => PokiAds();
+/// Picks the portal implementation by detecting which SDK the page loaded.
+///
+/// Detection at runtime rather than a build flag: the same bundle then works
+/// on Poki, on CrazyGames, and standalone on itch or GitHub Pages, where it
+/// simply runs without a portal. One less build variant to get wrong.
+RewardedAdService createAdService() {
+  if (_sdkPresent) return PokiAds();
+  if (_crazyGamesPresent) return CrazyGamesAds();
+  return const DisabledAds();
+}
+
+bool get _crazyGamesPresent {
+  try {
+    return globalContext.has('CrazyGames');
+  } catch (_) {
+    return false;
+  }
+}
