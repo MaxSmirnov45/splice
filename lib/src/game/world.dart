@@ -81,7 +81,6 @@ class World {
   double viewHalfWidth = 240, viewHalfHeight = 420;
 
   final List<Ability> abilities = [];
-  int _nextSlot = 1;
 
   /// Every genome the player has held this run, including ones since consumed
   /// by a splice. Feeds the persistent codex at the end of the run.
@@ -1285,9 +1284,33 @@ class World {
   /// Adds a wild spore to an empty slot. Returns false when full.
   bool addAbility(Genome g) {
     if (abilities.length >= maxAbilitySlots) return false;
-    abilities.add(Ability(g, _nextSlot++ % maxAbilitySlots));
+    abilities.add(Ability(g, _allocateSlot()));
     heldGenomes.add(g);
     return true;
+  }
+
+  /// Lowest slot index not currently held by an ability.
+  ///
+  /// This used to be a counter that only incremented, taken modulo the slot
+  /// count. Splicing frees slots, so after a few of them the counter wrapped
+  /// and handed out an index another ability was already using. Two abilities
+  /// on one slot share the per-enemy hit cooldown and therefore block each
+  /// other's hits permanently, and [abilityForSlot] resolves shots against
+  /// whichever it finds first — so learning a new ability could silently
+  /// disable one you already had.
+  int _allocateSlot() {
+    for (var i = 0; i < maxAbilitySlots; i++) {
+      var taken = false;
+      for (final a in abilities) {
+        if (a.slot == i) {
+          taken = true;
+          break;
+        }
+      }
+      if (!taken) return i;
+    }
+    // Unreachable while the capacity check above holds.
+    return 0;
   }
 
   /// Breeds two equipped abilities. Both parents are consumed and the child
