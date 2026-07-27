@@ -35,6 +35,21 @@
        initialises. The game checks for it and runs normally without it, so a
        local build or any other host still works. -->
   <script src="https://game-cdn.poki.com/scripts/v2/poki-sdk.js"></script>
+  <style>
+    /* Required by portal guidelines for mobile: a game canvas must not be
+       selectable, must not show tap highlights or iOS callout menus, and must
+       not let a swipe scroll or pull-to-refresh the host page instead of
+       reaching the game. */
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #05060D; }
+    * {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+  </style>
 </head>
 <body>
   <!--

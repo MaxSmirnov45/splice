@@ -28,6 +28,11 @@ class AdMobRewardedAds implements RewardedAdService {
     defaultValue: 'ca-app-pub-3940256099942544/1712485313',
   );
 
+  @override
+  void Function()? onAdOpened;
+  @override
+  void Function()? onAdClosed;
+
   RewardedAd? _ad;
   bool _loading = false;
   int _failures = 0;
@@ -92,12 +97,15 @@ class AdMobRewardedAds implements RewardedAdService {
     }
 
     ad.fullScreenContentCallback = FullScreenContentCallback(
+      onAdShowedFullScreenContent: (ad) => onAdOpened?.call(),
       onAdDismissedFullScreenContent: (ad) {
+        onAdClosed?.call();
         ad.dispose();
         _load();
         finish(earned);
       },
       onAdFailedToShowFullScreenContent: (ad, error) {
+        onAdClosed?.call();
         ad.dispose();
         _load();
         finish(false);

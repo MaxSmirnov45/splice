@@ -44,6 +44,11 @@ class PokiAds implements RewardedAdService {
   bool _initialised = false;
   bool _gameplayRunning = false;
 
+  @override
+  void Function()? onAdOpened;
+  @override
+  void Function()? onAdClosed;
+
   /// Poki's rewarded break is requested on demand rather than preloaded, so
   /// there is nothing to poll — availability is simply whether the SDK exists.
   @override

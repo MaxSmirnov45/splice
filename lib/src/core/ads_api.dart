@@ -16,6 +16,15 @@ abstract class RewardedAdService {
 
   void dispose();
 
+  /// Called when an ad actually appears, and again when it goes away.
+  ///
+  /// Portals require the game to be muted and paused for the duration of an
+  /// ad — not merely before requesting one, since a request may sit unfilled
+  /// for a while before anything is shown. The host wires these to pausing the
+  /// simulation and ducking audio.
+  void Function()? onAdOpened;
+  void Function()? onAdClosed;
+
   // --- session hooks -------------------------------------------------------
   //
   // Web portals want to know when the player is actually playing, so they can
@@ -40,6 +49,15 @@ abstract class RewardedAdService {
 /// advertising deliberately switched off.
 class DisabledAds implements RewardedAdService {
   const DisabledAds();
+
+  @override
+  void Function()? get onAdOpened => null;
+  @override
+  set onAdOpened(void Function()? _) {}
+  @override
+  void Function()? get onAdClosed => null;
+  @override
+  set onAdClosed(void Function()? _) {}
 
   @override
   bool get isReady => false;

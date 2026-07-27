@@ -44,6 +44,11 @@ class CrazyGamesAds implements RewardedAdService {
   bool _initialised = false;
   bool _gameplayRunning = false;
 
+  @override
+  void Function()? onAdOpened;
+  @override
+  void Function()? onAdClosed;
+
   /// Ads are requested on demand rather than preloaded, so readiness is simply
   /// whether the SDK initialised.
   @override
@@ -114,14 +119,19 @@ class CrazyGamesAds implements RewardedAdService {
 
     final completer = Completer<bool>();
     void finish(bool result) {
-      if (!completer.isCompleted) completer.complete(result);
+      if (completer.isCompleted) return;
+      onAdClosed?.call();
+      completer.complete(result);
     }
 
     try {
       final callbacks = JSObject();
       callbacks.setProperty('adFinished'.toJS, (() => finish(true)).toJS);
       callbacks.setProperty('adError'.toJS, ((JSAny? _, JSAny? __) => finish(false)).toJS);
-      callbacks.setProperty('adStarted'.toJS, (() {}).toJS);
+      // Muting and pausing here rather than at request time is the portal's
+      // documented requirement: a request can sit unfilled for some time
+      // before anything actually appears on screen.
+      callbacks.setProperty('adStarted'.toJS, (() => onAdOpened?.call()).toJS);
       _cgRequestAd(type.toJS, callbacks);
     } catch (e) {
       debugPrint('crazygames: requestAd threw ($e)');

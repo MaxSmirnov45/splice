@@ -71,6 +71,15 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       blocked: () => _inputBlocked,
     )..install();
     _ads = createAdService();
+    // Portals require the game muted and paused for the whole time an ad is on
+    // screen, signalled by the ad itself rather than by us requesting one.
+    _ads.onAdOpened = () {
+      _game.uiPaused = true;
+      _game.sfx.pauseAmbient();
+    };
+    _ads.onAdClosed = () {
+      _game.sfx.resumeAmbient();
+    };
     // Fire and forget: a missing or failing ad network simply means the revive
     // option is never offered.
     _ads.initialize();
