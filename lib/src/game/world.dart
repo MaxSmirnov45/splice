@@ -145,6 +145,7 @@ class World {
     _updatePickups(dt);
     _updateParticles(dt);
     _updateArcs(dt);
+    _updateLeechWindow(dt);
     _updateSpawning(dt);
     _updateAdaptation(dt);
   }
@@ -175,6 +176,51 @@ class World {
 
   void heal(double amount) {
     hp = math.min(maxHp, hp + amount);
+  }
+
+  /// Ceiling on lifesteal, as a fraction of max health per second.
+  ///
+  /// Leech is applied per hit, and hit count scales with how many enemies are
+  /// packed around the player — while incoming damage does not, because
+  /// contact is gated by invulnerability frames to roughly two hits a second.
+  /// Uncapped, that inverts the game: the denser the swarm, the safer you are,
+  /// and a wide aura with any leech at all makes you unkillable.
+  ///
+  /// The cap is deliberately below what sustained contact costs, so standing
+  /// in a crowd is always a losing trade — leech extends survival rather than
+  /// replacing it.
+  static const double leechBaseCap = 0.035;
+  static const double leechCapPerStack = 0.16;
+
+  double _leechWindow = 0;
+  double _leechedThisWindow = 0;
+
+  /// Highest lifesteal fraction among equipped abilities. Stacking several
+  /// leech abilities widens the cap once, not once per ability.
+  double get _leechCapFraction {
+    var best = 0.0;
+    for (final a in abilities) {
+      if (a.genome.leechFraction > best) best = a.genome.leechFraction;
+    }
+    return leechBaseCap + best * leechCapPerStack;
+  }
+
+  void _applyLeech(double amount) {
+    if (amount <= 0 || hp >= maxHp) return;
+    final cap = maxHp * _leechCapFraction;
+    final room = cap - _leechedThisWindow;
+    if (room <= 0) return;
+    final granted = math.min(amount, room);
+    _leechedThisWindow += granted;
+    heal(granted);
+  }
+
+  void _updateLeechWindow(double dt) {
+    _leechWindow += dt;
+    if (_leechWindow >= 1.0) {
+      _leechWindow = 0;
+      _leechedThisWindow = 0;
+    }
   }
 
   /// Revives allowed per run.
@@ -604,7 +650,7 @@ class World {
       }
     }
 
-    if (g.leechFraction > 0) heal(dealt * g.leechFraction);
+    if (g.leechFraction > 0) _applyLeech(dealt * g.leechFraction);
 
     if (e.hp <= 0) {
       _kill(e, g, slot, payload);
