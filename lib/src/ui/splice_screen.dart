@@ -181,7 +181,8 @@ class _SpliceScreenState extends State<SpliceScreen> {
                   ),
                   const SizedBox(height: 18),
                   _sectionLabel(
-                      'ORGANISM  ${world.abilities.length}/$maxAbilitySlots'),
+                    'ORGANISM  ${world.abilities.length}/$maxAbilitySlots',
+                  ),
                   const SizedBox(height: 6),
                   for (var i = 0; i < world.abilities.length; i++) ...[
                     AbilityCard(
@@ -194,14 +195,19 @@ class _SpliceScreenState extends State<SpliceScreen> {
                     ),
                     const SizedBox(height: 7),
                   ],
-                  if (_child != null) ...[
-                    const SizedBox(height: 10),
-                    _offspringPanel(_child!),
-                  ],
                   const SizedBox(height: 12),
                 ],
               ),
             ),
+            // Pinned above the footer rather than appended to the list: the
+            // preview is the whole point of selecting two parents, and now
+            // that cards carry a description it would otherwise sit below the
+            // fold exactly when the player most needs to read it.
+            if (_child != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
+                child: _offspringPanel(_child!),
+              ),
             _footer(action),
           ],
         ),
@@ -222,12 +228,21 @@ class _SpliceScreenState extends State<SpliceScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text('LEVEL ${world.level}',
-              style: Skin.label(size: 22, color: Skin.text, weight: FontWeight.w700)),
+          Text(
+            'LEVEL ${world.level}',
+            style: Skin.label(
+              size: 22,
+              color: Skin.text,
+              weight: FontWeight.w700,
+            ),
+          ),
           const SizedBox(width: 10),
           Expanded(
-            child: Text(_hint,
-                textAlign: TextAlign.right, style: Skin.label(size: 10, color: Skin.dim)),
+            child: Text(
+              _hint,
+              textAlign: TextAlign.right,
+              style: Skin.label(size: 10, color: Skin.dim),
+            ),
           ),
         ],
       ),
@@ -235,9 +250,9 @@ class _SpliceScreenState extends State<SpliceScreen> {
   }
 
   Widget _sectionLabel(String text) => Text(
-        text,
-        style: Skin.label(size: 9.5, color: Skin.dim, weight: FontWeight.w700),
-      );
+    text,
+    style: Skin.label(size: 9.5, color: Skin.dim, weight: FontWeight.w700),
+  );
 
   /// Preview of the offspring, with the deltas against the stronger parent so
   /// the player can see exactly what the splice buys and what it costs.
@@ -261,13 +276,30 @@ class _SpliceScreenState extends State<SpliceScreen> {
         children: [
           Row(
             children: [
-              Text('OFFSPRING',
-                  style: Skin.label(size: 9.5, color: ramp[3], weight: FontWeight.w700)),
-              const Spacer(),
               Text(
-                '${better ? '+' : ''}${delta.toStringAsFixed(0)} DPS vs best parent',
+                'OFFSPRING',
                 style: Skin.label(
-                    size: 9.5, color: better ? ramp[3] : Skin.warn, weight: FontWeight.w700),
+                  size: 9.5,
+                  color: ramp[3],
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Expanded rather than a Spacer: on a narrow phone the
+              // comparison has to give way to the label instead of running off
+              // the edge of the panel.
+              Expanded(
+                child: Text(
+                  '${better ? '+' : ''}${delta.toStringAsFixed(0)} DPS vs parent',
+                  textAlign: TextAlign.right,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Skin.label(
+                    size: 9.5,
+                    color: better ? ramp[3] : Skin.warn,
+                    weight: FontWeight.w700,
+                  ),
+                ),
               ),
             ],
           ),
@@ -280,9 +312,14 @@ class _SpliceScreenState extends State<SpliceScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(child.displayName,
-                        style: Skin.label(
-                            size: 14, color: ramp[4], weight: FontWeight.w700)),
+                    Text(
+                      child.displayName,
+                      style: Skin.label(
+                        size: 14,
+                        color: ramp[4],
+                        weight: FontWeight.w700,
+                      ),
+                    ),
                     const SizedBox(height: 3),
                     Text(
                       '${child.vectors.map((v) => vectorDefs[v]!.name).join(' + ')} · '

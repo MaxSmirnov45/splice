@@ -20,15 +20,17 @@ class Skin {
 
   static const mono = 'Menlo';
 
-  static TextStyle label(
-          {double size = 11, Color color = dim, FontWeight weight = FontWeight.w500}) =>
-      TextStyle(
-        fontFamily: mono,
-        fontSize: size,
-        color: color,
-        fontWeight: weight,
-        letterSpacing: 0.8,
-      );
+  static TextStyle label({
+    double size = 11,
+    Color color = dim,
+    FontWeight weight = FontWeight.w500,
+  }) => TextStyle(
+    fontFamily: mono,
+    fontSize: size,
+    color: color,
+    fontWeight: weight,
+    letterSpacing: 0.8,
+  );
 }
 
 /// Centres overlay content and caps its width, with vertical scrolling when
@@ -108,7 +110,12 @@ class AbilityCard extends StatelessWidget {
             width: selected ? 2 : 1,
           ),
           boxShadow: selected
-              ? [BoxShadow(color: ramp[3].withValues(alpha: 0.28), blurRadius: 14)]
+              ? [
+                  BoxShadow(
+                    color: ramp[3].withValues(alpha: 0.28),
+                    blurRadius: 14,
+                  ),
+                ]
               : null,
         ),
         child: Opacity(
@@ -130,17 +137,26 @@ class AbilityCard extends StatelessWidget {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: Skin.label(
-                                size: 12.5, color: ramp[4], weight: FontWeight.w700),
+                              size: 12.5,
+                              color: ramp[4],
+                              weight: FontWeight.w700,
+                            ),
                           ),
                         ),
                         if (badge != null)
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 5,
+                              vertical: 1,
+                            ),
                             decoration: BoxDecoration(
                               color: ramp[2].withValues(alpha: 0.3),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text(badge!, style: Skin.label(size: 8, color: ramp[4])),
+                            child: Text(
+                              badge!,
+                              style: Skin.label(size: 8, color: ramp[4]),
+                            ),
                           ),
                       ],
                     ),
@@ -150,6 +166,14 @@ class AbilityCard extends StatelessWidget {
                           ? genome.payloadLabel
                           : '${genome.payloadLabel} · ${genome.triggerLabel}',
                       style: Skin.label(size: 9.5),
+                    ),
+                    const SizedBox(height: 5),
+                    // The rules of the ability, spelled out. Without this a
+                    // conditional trigger just looks like a skill that
+                    // sometimes refuses to work.
+                    Text(
+                      genome.description,
+                      style: Skin.label(size: 9).copyWith(height: 1.45),
                     ),
                     const SizedBox(height: 6),
                     _StatRow(genome: genome, ramp: ramp),
@@ -174,28 +198,38 @@ class _StatRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        _stat('DPS', genome.dps.toStringAsFixed(0)),
-        _stat('DMG', genome.damage.toStringAsFixed(0)),
-        _stat('RATE', '${(1 / genome.cooldown).toStringAsFixed(1)}/s'),
-        if (genome.count > 1) _stat('×', '${genome.count}'),
-      ],
+    // Scaled down rather than wrapped: four figures on a 320px phone would
+    // otherwise clip, and a second line would shift every card's height as
+    // numbers grow across a run.
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Row(
+        children: [
+          _stat('DPS', genome.dps.toStringAsFixed(0)),
+          _stat('DMG', genome.damage.toStringAsFixed(0)),
+          _stat('RATE', '${(1 / genome.cooldown).toStringAsFixed(1)}/s'),
+          if (genome.count > 1) _stat('×', '${genome.count}'),
+        ],
+      ),
     );
   }
 
   Widget _stat(String label, String value) => Padding(
-        padding: const EdgeInsets.only(right: 11),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text('$label ', style: Skin.label(size: 8, color: Skin.dim)),
-            Text(value, style: Skin.label(size: 11, color: ramp[3], weight: FontWeight.w700)),
-          ],
+    padding: const EdgeInsets.only(right: 11),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Text('$label ', style: Skin.label(size: 8, color: Skin.dim)),
+        Text(
+          value,
+          style: Skin.label(size: 11, color: ramp[3], weight: FontWeight.w700),
         ),
-      );
+      ],
+    ),
+  );
 }
 
 /// Lists the rider stacks carried by a genome, so the player can see what a

@@ -106,13 +106,17 @@ class Genome {
     if (generation > 0 && subVector == null) concentration += pureVectorBonus;
     if (generation > 0 && subPayload == null) concentration += purePayloadBonus;
 
-    damage = v.damage *
+    damage =
+        v.damage *
         p.damageMul *
         t.damageMul *
         (1 + _rider(Rider.amplify)) *
         genScale *
         concentration;
-    cooldown = math.max(0.05, v.cooldown * t.cooldownMul / (1 + _rider(Rider.rapid)));
+    cooldown = math.max(
+      0.05,
+      v.cooldown * t.cooldownMul / (1 + _rider(Rider.rapid)),
+    );
     count = v.count + (_rider(Rider.split) * v.splitAffinity).floor();
     pierce = v.pierce < 0 ? -1 : v.pierce + _rider(Rider.pierce).floor();
     range = v.range * (1 + _rider(Rider.reach));
@@ -130,10 +134,18 @@ class Genome {
 
     if (subVector != null) {
       final sv = vectorDefs[subVector]!;
-      subDamage = sv.damage * p.damageMul * t.damageMul *
-          (1 + _rider(Rider.amplify)) * genScale * subVectorPower;
+      subDamage =
+          sv.damage *
+          p.damageMul *
+          t.damageMul *
+          (1 + _rider(Rider.amplify)) *
+          genScale *
+          subVectorPower;
       // Halved instance count keeps a hybrid from doubling the entity budget.
-      subCount = math.max(1, (sv.count + (_rider(Rider.split) * sv.splitAffinity).floor()) ~/ 2);
+      subCount = math.max(
+        1,
+        (sv.count + (_rider(Rider.split) * sv.splitAffinity).floor()) ~/ 2,
+      );
       subRange = sv.range * (1 + _rider(Rider.reach));
     } else {
       subDamage = 0;
@@ -152,7 +164,8 @@ class Genome {
 
   /// Maps [0, inf) onto [0, limit) so a chance can grow forever without
   /// becoming a guarantee.
-  static double _asymptote(double raw, double limit) => limit * (1 - math.exp(-raw / limit));
+  static double _asymptote(double raw, double limit) =>
+      limit * (1 - math.exp(-raw / limit));
 
   int stacksOf(Rider r) => riders[r] ?? 0;
 
@@ -175,17 +188,21 @@ class Genome {
   }
 
   /// Every vector this genome delivers through.
-  List<Vector> get vectors => subVector == null ? [vector] : [vector, subVector!];
+  List<Vector> get vectors =>
+      subVector == null ? [vector] : [vector, subVector!];
 
   /// Every payload this genome applies.
-  List<Payload> get payloads => subPayload == null ? [payload] : [payload, subPayload!];
+  List<Payload> get payloads =>
+      subPayload == null ? [payload] : [payload, subPayload!];
 
   /// Sustained damage per second, ignoring travel time and overkill. Used to
   /// rank abilities in the UI and to sanity-check balance in tests.
   double get dps {
     final primary = damage * count * (1 + echoChance);
     final secondary = subDamage * subCount * (1 + echoChance);
-    final dot = dotPerSecond > 0 ? damage * dotPerSecond * statusDuration * count : 0.0;
+    final dot = dotPerSecond > 0
+        ? damage * dotPerSecond * statusDuration * count
+        : 0.0;
     return (primary + secondary + dot) / cooldown;
   }
 
@@ -205,10 +222,50 @@ class Genome {
 
   String get triggerLabel => triggerDefs[trigger]!.name;
 
+  /// A plain sentence describing what this ability actually does.
+  ///
+  /// Assembled from the genes rather than authored per combination: there are
+  /// 10 × 7 × 8 base abilities before riders, so any hand-written table would
+  /// be out of date the moment a gene changed.
+  String get description {
+    final v = vectorDefs[vector]!;
+    final t = triggerDefs[trigger]!;
+    final buffer = StringBuffer(_sentence(v.blurb));
+    if (subVector != null) {
+      buffer.write(' It also ${vectorDefs[subVector]!.blurb}, weaker.');
+    }
+    buffer.write(' Fires ${t.condition}.');
+    final effect = payloadDefs[payload]!.blurb;
+    if (effect.isNotEmpty) buffer.write(' $effect');
+    return buffer.toString();
+  }
+
+  /// Short label naming the condition holding this ability back, or empty when
+  /// nothing but its cooldown gates it.
+  String get triggerBadge => triggerDefs[trigger]!.badge;
+
+  static String _sentence(String verbPhrase) {
+    final s = verbPhrase.isEmpty
+        ? ''
+        : '${verbPhrase[0].toUpperCase()}${verbPhrase.substring(1)}';
+    return '$s.';
+  }
+
   static String _numeral(int n) {
     const numerals = [
-      [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'], [100, 'C'], [90, 'XC'],
-      [50, 'L'], [40, 'XL'], [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I'],
+      [1000, 'M'],
+      [900, 'CM'],
+      [500, 'D'],
+      [400, 'CD'],
+      [100, 'C'],
+      [90, 'XC'],
+      [50, 'L'],
+      [40, 'XL'],
+      [10, 'X'],
+      [9, 'IX'],
+      [5, 'V'],
+      [4, 'IV'],
+      [1, 'I'],
     ];
     var remaining = n;
     final out = StringBuffer();
@@ -249,13 +306,13 @@ class Genome {
 
   /// The ability every run begins with. Fixed, so openings are learnable.
   factory Genome.starter() => Genome(
-        vector: Vector.bolt,
-        payload: Payload.kinetic,
-        trigger: Trigger.timer,
-        riders: const {},
-        generation: 0,
-        seed: 0x5EED,
-      );
+    vector: Vector.bolt,
+    payload: Payload.kinetic,
+    trigger: Trigger.timer,
+    riders: const {},
+    generation: 0,
+    seed: 0x5EED,
+  );
 
   /// Breeds [a] and [b] into a single offspring.
   ///
@@ -317,7 +374,9 @@ class Genome {
       }
     } else if (roll < 0.82) {
       // Acquire a rider it does not have yet, widening its behaviour.
-      final missing = Rider.values.where((r) => !riders.containsKey(r)).toList();
+      final missing = Rider.values
+          .where((r) => !riders.containsKey(r))
+          .toList();
       if (missing.isEmpty) {
         final key = rng.pick(riders.keys.toList());
         riders[key] = riders[key]! + 1;
@@ -325,20 +384,25 @@ class Genome {
         riders[rng.pick(missing)] = 1;
       }
     } else if (roll < 0.90) {
-      return _copy(riders: riders, trigger: _pickOther(rng, Trigger.values, trigger));
+      return _copy(
+        riders: riders,
+        trigger: _pickOther(rng, Trigger.values, trigger),
+      );
     } else if (roll < 0.96) {
       // Drift the secondary payload; the primary identity is untouched.
       return _copy(
-          riders: riders,
-          subPayload: _pickExcluding(rng, Payload.values, [payload, subPayload]),
-          setSubPayload: true);
+        riders: riders,
+        subPayload: _pickExcluding(rng, Payload.values, [payload, subPayload]),
+        setSubPayload: true,
+      );
     } else {
       // Rarest: the secondary delivery drifts. A pure lineage can sprout one
       // here, which is the only way an unspliced ability gains a second vector.
       return _copy(
-          riders: riders,
-          subVector: _pickExcluding(rng, Vector.values, [vector, subVector]),
-          setSubVector: true);
+        riders: riders,
+        subVector: _pickExcluding(rng, Vector.values, [vector, subVector]),
+        setSubVector: true,
+      );
     }
     return _copy(riders: riders);
   }
@@ -371,45 +435,46 @@ class Genome {
     Payload? subPayload,
     bool setSubVector = false,
     bool setSubPayload = false,
-  }) =>
-      Genome(
-        vector: vector ?? this.vector,
-        payload: payload ?? this.payload,
-        trigger: trigger ?? this.trigger,
-        riders: riders ?? this.riders,
-        subVector: setSubVector ? subVector : this.subVector,
-        subPayload: setSubPayload ? subPayload : this.subPayload,
-        generation: generation ?? this.generation,
-        seed: seed,
-      );
+  }) => Genome(
+    vector: vector ?? this.vector,
+    payload: payload ?? this.payload,
+    trigger: trigger ?? this.trigger,
+    riders: riders ?? this.riders,
+    subVector: setSubVector ? subVector : this.subVector,
+    subPayload: setSubPayload ? subPayload : this.subPayload,
+    generation: generation ?? this.generation,
+    seed: seed,
+  );
 
   // --- serialisation ------------------------------------------------------
 
   Map<String, dynamic> toJson() => {
-        'v': vector.index,
-        'p': payload.index,
-        't': trigger.index,
-        'g': generation,
-        's': seed,
-        if (subVector != null) 'sv': subVector!.index,
-        if (subPayload != null) 'sp': subPayload!.index,
-        'r': riders.map((k, v) => MapEntry(k.index.toString(), v)),
-      };
+    'v': vector.index,
+    'p': payload.index,
+    't': trigger.index,
+    'g': generation,
+    's': seed,
+    if (subVector != null) 'sv': subVector!.index,
+    if (subPayload != null) 'sp': subPayload!.index,
+    'r': riders.map((k, v) => MapEntry(k.index.toString(), v)),
+  };
 
   factory Genome.fromJson(Map<String, dynamic> j) => Genome(
-        vector: Vector.values[j['v'] as int],
-        payload: Payload.values[j['p'] as int],
-        trigger: Trigger.values[j['t'] as int],
-        subVector: j['sv'] == null ? null : Vector.values[j['sv'] as int],
-        subPayload: j['sp'] == null ? null : Payload.values[j['sp'] as int],
-        generation: j['g'] as int,
-        seed: j['s'] as int,
-        riders: (j['r'] as Map<String, dynamic>)
-            .map((k, v) => MapEntry(Rider.values[int.parse(k)], v as int)),
-      );
+    vector: Vector.values[j['v'] as int],
+    payload: Payload.values[j['p'] as int],
+    trigger: Trigger.values[j['t'] as int],
+    subVector: j['sv'] == null ? null : Vector.values[j['sv'] as int],
+    subPayload: j['sp'] == null ? null : Payload.values[j['sp'] as int],
+    generation: j['g'] as int,
+    seed: j['s'] as int,
+    riders: (j['r'] as Map<String, dynamic>).map(
+      (k, v) => MapEntry(Rider.values[int.parse(k)], v as int),
+    ),
+  );
 
   @override
-  String toString() => '$displayName [$triggerLabel] $payloadLabel '
+  String toString() =>
+      '$displayName [$triggerLabel] $payloadLabel '
       'dmg=${damage.toStringAsFixed(1)} cd=${cooldown.toStringAsFixed(2)} '
       'n=$count dps=${dps.toStringAsFixed(1)}';
 }

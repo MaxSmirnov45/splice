@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:splice/src/core/rng.dart';
+import 'package:splice/src/game/entities.dart';
 import 'package:splice/src/game/world.dart';
 import 'package:splice/src/genome/genes.dart';
 import 'package:splice/src/genome/genome.dart';
 import 'package:splice/src/render/atlas.dart';
+import 'package:splice/src/ui/ability_card.dart';
 import 'package:splice/src/ui/splice_screen.dart';
 
 /// Drives the Splice screen directly. Interaction state is the one thing a
@@ -18,7 +20,14 @@ void main() {
     atlas = await SpriteAtlas.load();
   });
 
-  Future<World> pumpScreen(WidgetTester tester, {int abilities = 3}) async {
+  Future<World> pumpScreen(WidgetTester tester,
+      {int abilities = 3, Size? screen}) async {
+    if (screen != null) {
+      tester.view.physicalSize = screen;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+    }
     final world = World(42);
     world.pendingLevelUps = 1;
     world.level = 4;
@@ -170,5 +179,33 @@ void main() {
       await tester.pump();
       expect(tester.takeException(), isNull, reason: 'vector $v failed to paint');
     }
+  });
+
+  // Cards carry a description now. On the narrowest phone still in use that
+  // has to wrap or scale, not clip — a laid-out-but-overflowing card is
+  // exactly the kind of thing that ships unnoticed.
+  testWidgets('a full organism lays out on a narrow phone', (tester) async {
+    await pumpScreen(tester,
+        abilities: maxAbilitySlots, screen: const Size(320, 568));
+    expect(find.byType(AbilityCard), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the offspring preview lays out on a narrow phone',
+      (tester) async {
+    final world = await pumpScreen(tester, screen: const Size(320, 568));
+
+    // Cards are tall enough that the organism list starts below the fold on a
+    // phone this short, so scroll it up before aiming at anything.
+    await tester.drag(find.byType(Scrollable).first, const Offset(0, -220));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(world.abilities[0].genome.displayName));
+    await tester.pump();
+    await tester.tap(find.text(world.abilities[1].genome.displayName));
+    await tester.pump();
+
+    expect(find.text('OFFSPRING'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 }
