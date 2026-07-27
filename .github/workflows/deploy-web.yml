@@ -36,8 +36,11 @@ jobs:
         run: flutter pub get
 
       - name: Verify
+        # --no-fatal-infos deliberately: CI tracks Flutter stable, which adds
+        # new advisory lints over time. Those should not be able to block a
+        # deploy of working, tested code. Warnings and errors still fail.
         run: |
-          flutter analyze
+          flutter analyze --no-fatal-infos
           flutter test
 
       - name: Build web

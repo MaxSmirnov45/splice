@@ -409,8 +409,9 @@ class _HudOverlayState extends State<_HudOverlay>
       final raster = t.rasterDuration.inMicroseconds / 1000.0;
       if (build > _windowWorst) _windowWorst = build;
       if (raster > _windowWorstRaster) _windowWorstRaster = raster;
-      if (build >= _jankThresholdMs || raster >= _jankThresholdMs)
+      if (build >= _jankThresholdMs || raster >= _jankThresholdMs) {
         _windowJank++;
+      }
     }
   }
 
