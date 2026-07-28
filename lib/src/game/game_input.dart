@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 
 import '../render/renderer.dart';
@@ -13,8 +14,8 @@ import '../render/renderer.dart';
 class GameInput {
   final KeyboardController keys = KeyboardController();
 
-  /// Invoked when Escape is pressed, for pause/resume.
-  final void Function() onEscape;
+  /// Invoked when a pause key is pressed, for pause/resume.
+  final void Function() onPause;
 
   /// Whether the game is currently accepting steering. While a menu is open,
   /// held keys are dropped so a key-up landing on the menu cannot leave the
@@ -23,7 +24,7 @@ class GameInput {
 
   bool _installed = false;
 
-  GameInput({required this.onEscape, required this.blocked});
+  GameInput({required this.onPause, required this.blocked});
 
   void install() {
     if (_installed) return;
@@ -37,11 +38,23 @@ class GameInput {
     HardwareKeyboard.instance.removeHandler(handleKey);
   }
 
+  /// Whether a key should open or close the pause menu.
+  ///
+  /// P, always. Escape too — but never on the web, where portals treat it as
+  /// theirs: it is what leaves fullscreen, and a game that swallows it traps
+  /// the player in a fullscreen frame with no way out. Consuming it is
+  /// explicitly against the platform's guidance.
+  static bool isPauseKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+    if (event.physicalKey == PhysicalKeyboardKey.keyP) return true;
+    return !kIsWeb && event.logicalKey == LogicalKeyboardKey.escape;
+  }
+
   /// Returns true when the event was consumed by the game.
   bool handleKey(KeyEvent event) {
     keys.eventsSeen++;
-    if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.escape) {
-      onEscape();
+    if (isPauseKey(event)) {
+      onPause();
       return true;
     }
     if (blocked()) {

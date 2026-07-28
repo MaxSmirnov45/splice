@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/services.dart'
-    show KeyDownEvent, KeyEvent, KeyUpEvent, LogicalKeyboardKey;
+    show KeyDownEvent, KeyEvent, KeyUpEvent, PhysicalKeyboardKey;
 
 import '../game/entities.dart';
 import '../game/world.dart';
@@ -647,24 +647,32 @@ class _Ring {
 /// live at the same time on a laptop with a touchscreen, and whichever the
 /// player last used should win without either resetting the other.
 class KeyboardController {
-  static final _left = <LogicalKeyboardKey>{
-    LogicalKeyboardKey.keyA,
-    LogicalKeyboardKey.arrowLeft,
+  // Matched by physical position, not by the letter printed on the key.
+  //
+  // A movement cluster is a shape under the left hand, not four letters. On a
+  // French AZERTY keyboard the key where W sits reports the logical key Z, and
+  // the key where A sits reports Q — so a logical WASD binding leaves those
+  // players with no keyboard movement at all unless they rebind their own
+  // operating system. Matching position means the same four keys under the
+  // same four fingers on QWERTY, AZERTY, QWERTZ and Dvorak alike.
+  static final _left = <PhysicalKeyboardKey>{
+    PhysicalKeyboardKey.keyA,
+    PhysicalKeyboardKey.arrowLeft,
   };
-  static final _right = <LogicalKeyboardKey>{
-    LogicalKeyboardKey.keyD,
-    LogicalKeyboardKey.arrowRight,
+  static final _right = <PhysicalKeyboardKey>{
+    PhysicalKeyboardKey.keyD,
+    PhysicalKeyboardKey.arrowRight,
   };
-  static final _up = <LogicalKeyboardKey>{
-    LogicalKeyboardKey.keyW,
-    LogicalKeyboardKey.arrowUp,
+  static final _up = <PhysicalKeyboardKey>{
+    PhysicalKeyboardKey.keyW,
+    PhysicalKeyboardKey.arrowUp,
   };
-  static final _down = <LogicalKeyboardKey>{
-    LogicalKeyboardKey.keyS,
-    LogicalKeyboardKey.arrowDown,
+  static final _down = <PhysicalKeyboardKey>{
+    PhysicalKeyboardKey.keyS,
+    PhysicalKeyboardKey.arrowDown,
   };
 
-  final Set<LogicalKeyboardKey> _held = {};
+  final Set<PhysicalKeyboardKey> _held = {};
 
   double dx = 0, dy = 0;
 
@@ -681,7 +689,7 @@ class KeyboardController {
   /// Feeds a raw key event. Returns true if it was a movement key, so the
   /// caller can let anything else through to the rest of the app.
   bool handle(KeyEvent event) {
-    final key = event.logicalKey;
+    final key = event.physicalKey;
     final isMovement = _left.contains(key) ||
         _right.contains(key) ||
         _up.contains(key) ||

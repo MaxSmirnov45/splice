@@ -129,7 +129,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _input = GameInput(
-      onEscape: () {
+      onPause: () {
         if (_showPause) {
           _closePause();
         } else if (!_inputBlocked) {

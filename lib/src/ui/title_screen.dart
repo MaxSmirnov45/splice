@@ -171,7 +171,7 @@ class _TitleScreenState extends State<TitleScreen>
                 const SizedBox(height: 12),
                 Text(
                   save.runs == 0
-                      ? 'drag anywhere to move · abilities fire themselves'
+                      ? 'drag or WASD to move · abilities fire themselves'
                       : 'codex ${save.codexSeen}/${save.codexTotal} genes · ${save.runs} runs',
                   textAlign: TextAlign.center,
                   style: Skin.label(size: 9, color: Skin.dim),

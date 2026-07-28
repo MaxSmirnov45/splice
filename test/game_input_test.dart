@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:splice/src/game/game_input.dart';
@@ -14,13 +15,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   late GameInput input;
-  var escapes = 0;
+  var pauses = 0;
   var blocked = false;
 
   setUp(() {
-    escapes = 0;
+    pauses = 0;
     blocked = false;
-    input = GameInput(onEscape: () => escapes++, blocked: () => blocked)..install();
+    input = GameInput(onPause: () => pauses++, blocked: () => blocked)..install();
   });
 
   tearDown(() => input.dispose());
@@ -46,9 +47,37 @@ void main() {
     }
   });
 
-  testWidgets('escape reaches the pause handler', (tester) async {
+  testWidgets('P reaches the pause handler', (tester) async {
+    await simulateKeyDownEvent(LogicalKeyboardKey.keyP);
+    expect(pauses, 1);
+  });
+
+  // Escape is the portal's, not the game's: it is what leaves fullscreen, and
+  // a game that swallows it traps the player in a fullscreen frame. It stays
+  // bound off the web, where nothing else claims it — and this runs on the VM,
+  // so that is the branch under test here.
+  testWidgets('escape pauses away from the web', (tester) async {
     await simulateKeyDownEvent(LogicalKeyboardKey.escape);
-    expect(escapes, 1);
+    expect(pauses, 1);
+  });
+
+  test('the web never treats escape as a pause key', () {
+    // Asserted on the classifier rather than through a simulated press, since
+    // a VM test cannot pretend to be a browser.
+    const escape = KeyDownEvent(
+      logicalKey: LogicalKeyboardKey.escape,
+      physicalKey: PhysicalKeyboardKey.escape,
+      timeStamp: Duration.zero,
+    );
+    const p = KeyDownEvent(
+      logicalKey: LogicalKeyboardKey.keyP,
+      physicalKey: PhysicalKeyboardKey.keyP,
+      timeStamp: Duration.zero,
+    );
+    expect(GameInput.isPauseKey(p), isTrue,
+        reason: 'P must pause everywhere, since escape cannot on the web');
+    expect(GameInput.isPauseKey(escape), !kIsWeb,
+        reason: 'escape may only pause where the platform does not own it');
   });
 
   testWidgets('a menu blocks steering and clears held keys', (tester) async {
@@ -63,10 +92,10 @@ void main() {
     await simulateKeyUpEvent(LogicalKeyboardKey.keyW);
   });
 
-  testWidgets('escape still works while a menu is open', (tester) async {
+  testWidgets('the pause key still works while a menu is open', (tester) async {
     blocked = true;
-    await simulateKeyDownEvent(LogicalKeyboardKey.escape);
-    expect(escapes, 1, reason: 'escape must resume, not be swallowed');
+    await simulateKeyDownEvent(LogicalKeyboardKey.keyP);
+    expect(pauses, 1, reason: 'the pause key must resume, not be swallowed');
   });
 
   testWidgets('unrelated keys are not consumed', (tester) async {
