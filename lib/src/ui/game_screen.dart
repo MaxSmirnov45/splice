@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -9,6 +11,7 @@ import '../core/leaderboard.dart';
 import '../core/save.dart';
 import '../game/game_input.dart';
 import '../game/splice_game.dart';
+import '../game/world.dart';
 import 'ability_card.dart';
 import 'hud.dart';
 import 'leaderboard_screen.dart';
@@ -24,11 +27,46 @@ import 'splice_screen.dart';
 /// The consequence is that the pause button must live *outside* the Listener's
 /// subtree. Inside it, tapping pause would also plant the floating joystick at
 /// that point and the player would drift while the menu opened.
+/// What the end of a run should do about the leaderboard.
+enum EndOfRunAction {
+  /// No backend, so the board is never mentioned.
+  nothing,
+
+  /// First run: ask what name to post under, then post.
+  askForName,
+
+  /// The name is already known, so post without interrupting.
+  postNow,
+}
+
+/// Decides how a finished run reaches the board.
+///
+/// Pulled out of the widget because getting it wrong is invisible: a run that
+/// silently fails to post looks exactly like a run that posted fine, and the
+/// board has no update path to correct it afterwards.
+EndOfRunAction endOfRunAction({
+  required bool boardAvailable,
+  required String playerName,
+}) {
+  if (!boardAvailable) return EndOfRunAction.nothing;
+  return playerName.trim().isEmpty
+      ? EndOfRunAction.askForName
+      : EndOfRunAction.postNow;
+}
+
 class GameScreen extends StatefulWidget {
   final SaveData save;
   final VoidCallback onExit;
 
-  const GameScreen({super.key, required this.save, required this.onExit});
+  /// Overridable so the end-of-run flow can be driven without a live backend.
+  final Leaderboard? leaderboard;
+
+  const GameScreen({
+    super.key,
+    required this.save,
+    required this.onExit,
+    this.leaderboard,
+  });
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -58,13 +96,17 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// Global key routing. Not focus-based — see [GameInput].
   late final GameInput _input;
 
-  late final Leaderboard _leaderboard = createLeaderboard();
+  late final Leaderboard _leaderboard =
+      widget.leaderboard ?? createLeaderboard();
   bool _showBoard = false;
   bool _showNamePrompt = false;
 
   /// The run just finished, held so it can be posted once a name exists and
   /// highlighted in the board afterwards.
   ScoreEntry? _pendingScore;
+
+  /// Whether the finished run has been sent to the board.
+  bool _posted = false;
 
   @override
   void initState() {
@@ -154,9 +196,26 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       kills: world.kills,
       generation: world.deepestGeneration,
     );
+    // The board asks for itself rather than waiting to be found. A run only
+    // ends once, and a player who has to go looking for a "post score" button
+    // has already stopped caring about the board.
+    final action = endOfRunAction(
+      boardAvailable: _leaderboard.isAvailable,
+      playerName: widget.save.playerName,
+    );
+    _pendingScore = action == EndOfRunAction.nothing ? null : _entryForRun();
+    final needsName = action == EndOfRunAction.askForName;
+    if (action == EndOfRunAction.postNow) {
+      _posted = true;
+      // Not awaited: the player sees their run immediately, and a slow or
+      // failed submission never holds up the game-over screen.
+      unawaited(_submitPending());
+    }
+
     setState(() {
       _showPause = false;
       _showGameOver = true;
+      _showNamePrompt = needsName;
       _game.uiPaused = true;
     });
   }
@@ -186,6 +245,13 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         _game.state.revive();
         _showGameOver = false;
         _game.uiPaused = false;
+        // The run is not over after all, so the score banked when it looked
+        // like it was must be thrown away. Posting it now would put a
+        // truncated run on the board and, since the board has no update path,
+        // it could never be corrected.
+        _pendingScore = null;
+        _posted = false;
+        _showNamePrompt = false;
       }
     });
   }
@@ -261,6 +327,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _showPause = false;
       _newBest = false;
       _runRecorded = false;
+      _pendingScore = null;
+      _posted = false;
     });
     _ads.gameplayStart();
   }
@@ -292,14 +360,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     );
   }
 
-  /// Posts the finished run, asking for a name the first time.
+  /// Posts the finished run by hand.
+  ///
+  /// Only reachable when the automatic post did not happen — that is, when the
+  /// player dismissed the name prompt and later changed their mind.
   Future<void> _postScore() async {
-    if (!_leaderboard.isAvailable) return;
-    _pendingScore = _entryForRun();
-    if (widget.save.playerName.isEmpty) {
+    if (!_leaderboard.isAvailable || _posted) return;
+    _pendingScore ??= _entryForRun();
+    if (widget.save.playerName.trim().isEmpty) {
       setState(() => _showNamePrompt = true);
       return;
     }
+    setState(() => _posted = true);
     await _submitPending();
     if (mounted) setState(() => _showBoard = true);
   }
@@ -399,8 +471,14 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onSubmit: (name) async {
                   widget.save.playerName = name;
                   widget.save.save();
-                  _pendingScore = _entryForRun();
-                  setState(() => _showNamePrompt = false);
+                  // Reuses the entry captured when the run ended rather than
+                  // rebuilding it, so the time on the board is the time the
+                  // player died at, not the time they finished typing.
+                  _pendingScore ??= _entryForRun();
+                  setState(() {
+                    _showNamePrompt = false;
+                    _posted = true;
+                  });
                   await _submitPending();
                   if (mounted) setState(() => _showBoard = true);
                 },
@@ -413,12 +491,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onClose: _closeBoard,
               ),
             if (_showGameOver)
-              _GameOverScreen(
-                game: _game,
+              GameOverScreen(
+                world: _game.state,
                 onRestart: _restart,
                 onExit: _quitToMenu,
                 newBest: _newBest,
-                onPostScore: _leaderboard.isAvailable ? _postScore : null,
+                posted: _posted,
+                postedAs: widget.save.playerName,
+                onViewBoard: _leaderboard.isAvailable ? _openBoard : null,
+                onPostScore:
+                    _leaderboard.isAvailable && !_posted ? _postScore : null,
                 // Offered only when a revive remains and an ad is actually
                 // loaded, so the button never appears and then fails.
                 onReviveForAd:
@@ -769,31 +851,47 @@ class _PauseScreenState extends State<_PauseScreen> {
   );
 }
 
-class _GameOverScreen extends StatelessWidget {
-  final SpliceGame game;
+/// Shown when a run ends.
+///
+/// Takes the [World] it reports on rather than the whole game: it only ever
+/// reads the run's numbers, and the narrower dependency lets it be built in a
+/// test without loading Flame.
+class GameOverScreen extends StatelessWidget {
+  final World world;
   final VoidCallback onRestart;
   final VoidCallback onExit;
   final bool newBest;
   final VoidCallback? onReviveForAd;
   final bool watchingAd;
 
-  /// Null when no scoreboard backend is configured, in which case the button
-  /// is not offered at all rather than shown and failing.
+  /// Whether the run has already gone to the board, and under what name.
+  final bool posted;
+  final String postedAs;
+
+  /// Null when no scoreboard backend is configured, in which case nothing
+  /// about the board is offered rather than shown and failing.
+  final VoidCallback? onViewBoard;
+
+  /// Null once the run is posted, or when there is no backend. Only a player
+  /// who dismissed the name prompt ever sees this.
   final VoidCallback? onPostScore;
 
-  const _GameOverScreen({
-    required this.game,
+  const GameOverScreen({
+    super.key,
+    required this.world,
     required this.onRestart,
     required this.onExit,
     required this.newBest,
     this.onReviveForAd,
     this.watchingAd = false,
+    this.posted = false,
+    this.postedAs = '',
+    this.onViewBoard,
     this.onPostScore,
   });
 
   @override
   Widget build(BuildContext context) {
-    final world = game.state;
     final minutes = (world.time ~/ 60).toString().padLeft(2, '0');
     final seconds = (world.time % 60).floor().toString().padLeft(2, '0');
 
@@ -838,6 +936,21 @@ class _GameOverScreen extends StatelessWidget {
             ],
             _button('SPLICE AGAIN', Skin.accent, onRestart),
             const SizedBox(height: 10),
+            if (onPostScore != null) ...[
+              _button('POST TO LEADERBOARD', Skin.text, onPostScore!),
+              const SizedBox(height: 10),
+            ] else if (posted && onViewBoard != null) ...[
+              Text(
+                postedAs.isEmpty
+                    ? 'posted to the leaderboard'
+                    : 'posted as $postedAs',
+                textAlign: TextAlign.center,
+                style: Skin.label(size: 9.5, color: Skin.dim),
+              ),
+              const SizedBox(height: 8),
+              _button('LEADERBOARD', Skin.text, onViewBoard!),
+              const SizedBox(height: 10),
+            ],
             _button('MENU', Skin.dim, onExit),
           ],
         ),
