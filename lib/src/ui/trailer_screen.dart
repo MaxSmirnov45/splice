@@ -30,17 +30,6 @@ class _TrailerScreenState extends State<TrailerScreen>
   late final Ticker _ticker;
   double _t = 0;
 
-  /// One line per loadout, in the order the game cycles them.
-  ///
-  /// Each says something the footage alone cannot: what the player is looking
-  /// at is a hybrid, and it is different every run.
-  static const _captions = <String>[
-    'BREED TWO ABILITIES INTO ONE',
-    'THE CHILD INHERITS FROM BOTH',
-    'THE SWARM ADAPTS TO YOU',
-    'NO TWO RUNS GROW THE SAME',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -59,21 +48,22 @@ class _TrailerScreenState extends State<TrailerScreen>
   }
 
   /// 0 while a caption is arriving, 1 while it holds, 0 as it leaves.
-  double _captionOpacity(double intoAct) {
-    const fade = 0.45;
-    const hold = SpliceGame.trailerActSeconds;
-    if (intoAct < fade) return intoAct / fade;
-    if (intoAct > hold - fade) return ((hold - intoAct) / fade).clamp(0.0, 1.0);
+  double _captionOpacity(double intoPhase, double phaseSeconds) {
+    const fade = 0.5;
+    if (intoPhase < fade) return intoPhase / fade;
+    if (intoPhase > phaseSeconds - fade) {
+      return ((phaseSeconds - intoPhase) / fade).clamp(0.0, 1.0);
+    }
     return 1;
   }
 
   @override
   Widget build(BuildContext context) {
-    final act = _game.bootComplete ? _game.trailerAct : 0;
-    final intoAct = _game.bootComplete
-        ? _game.trailerClock % SpliceGame.trailerActSeconds
-        : 0.0;
-    final opacity = _captionOpacity(intoAct);
+    final booted = _game.bootComplete;
+    final phase = SpliceGame.trailerPhases[booted ? _game.trailerPhase : 0];
+    final intoPhase = booted ? _game.trailerIntoPhase : 0.0;
+    final opacity = _captionOpacity(intoPhase, phase.seconds);
+    final flash = booted ? _game.trailerFlash : 0.0;
 
     return Scaffold(
       backgroundColor: Skin.bg,
@@ -87,32 +77,31 @@ class _TrailerScreenState extends State<TrailerScreen>
             right: 0,
             bottom: MediaQuery.sizeOf(context).height * 0.13,
             child: IgnorePointer(
+              child: Opacity(opacity: opacity, child: _caption(phase.caption)),
+            ),
+          ),
+          // The wordmark rides above the action for the whole run.
+          Positioned(
+            left: 0,
+            right: 0,
+            top: MediaQuery.sizeOf(context).height * 0.08,
+            child: IgnorePointer(
               child: Opacity(
-                opacity: opacity,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _caption(_captions[act % _captions.length]),
-                  ],
+                opacity: opacity * 0.9,
+                child: Text(
+                  'SPLICE',
+                  textAlign: TextAlign.center,
+                  style: _titleStyle(context),
                 ),
               ),
             ),
           ),
-          // A closing wordmark over the last second and a half.
-          if (_t > 0)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: MediaQuery.sizeOf(context).height * 0.08,
+          // The cut. Painted over everything, including the captions, so the
+          // whole frame blooms at once rather than the text surviving it.
+          if (flash > 0.001)
+            Positioned.fill(
               child: IgnorePointer(
-                child: Opacity(
-                  opacity: opacity * 0.9,
-                  child: Text(
-                    'SPLICE',
-                    textAlign: TextAlign.center,
-                    style: _titleStyle(context),
-                  ),
-                ),
+                child: ColoredBox(color: Colors.white.withValues(alpha: flash)),
               ),
             ),
         ],

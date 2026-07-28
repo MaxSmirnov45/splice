@@ -33,25 +33,87 @@ class SpliceGame extends FlameGame {
   /// Scripted showcase, for recording a store video.
   ///
   /// A run played honestly does not reach anything worth filming inside twenty
-  /// seconds, and a portal video is judged on its first two. This builds a
-  /// late-game organism outright, cycles it through loadouts that look nothing
-  /// like each other, and keeps the screen full.
+  /// seconds, and a portal video is judged on its first two. This plays the
+  /// arc instead: one plain ability, then a hybrid, then an organism six
+  /// generations deep, so the video shows what the game *does* rather than
+  /// just what its late game looks like.
   static const bool trailerMode = bool.fromEnvironment('SPLICE_TRAILER');
 
   /// How much faster than real time the trailer runs.
   static const double trailerSpeed = 1.5;
 
-  /// Seconds each loadout stays on screen.
-  static const double trailerActSeconds = 4.5;
+  /// The three acts. Total runs to eighteen seconds, inside the portal's
+  /// twenty-second limit with room to spare.
+  static const List<TrailerPhase> trailerPhases = [
+    TrailerPhase(
+      caption: 'EVERY RUN STARTS WITH ONE ABILITY',
+      seconds: 5,
+      abilities: 1,
+      generation: 0,
+      riders: 0,
+      hybrid: false,
+      spawnInterval: 0.5,
+      enemyHp: 1.0,
+      level: 2,
+      time: 35,
+    ),
+    TrailerPhase(
+      caption: 'EVERY LEVEL, BREED TWO INTO ONE',
+      seconds: 5,
+      abilities: 3,
+      generation: 2,
+      riders: 3,
+      hybrid: true,
+      spawnInterval: 0.24,
+      enemyHp: 1.8,
+      level: 11,
+      time: 240,
+    ),
+    TrailerPhase(
+      caption: 'SIX GENERATIONS LATER',
+      seconds: 8,
+      abilities: 5,
+      generation: 6,
+      riders: 8,
+      hybrid: true,
+      spawnInterval: 0.11,
+      enemyHp: 3.0,
+      level: 27,
+      time: 620,
+    ),
+  ];
 
-  static const int trailerActs = 4;
+  static double get trailerSeconds =>
+      trailerPhases.fold(0.0, (sum, p) => sum + p.seconds);
 
   double _trailerClock = 0;
-  int _trailerAct = -1;
+  int _trailerPhase = -1;
 
-  /// Which loadout is showing, so the caption can follow it.
-  int get trailerAct => _trailerAct < 0 ? 0 : _trailerAct;
+  /// Counts down after a cut. Drives the white flash that hides the moment the
+  /// loadout is swapped — without it the organism visibly teleports.
+  double _trailerFlash = 0;
+
+  static const double trailerFlashSeconds = 0.42;
+
+  int get trailerPhase => _trailerPhase < 0 ? 0 : _trailerPhase;
   double get trailerClock => _trailerClock;
+
+  /// 1 at the instant of a cut, falling to 0. Squared, so the flash blooms
+  /// hard and leaves quickly rather than lingering as a grey wash.
+  double get trailerFlash {
+    final t = (_trailerFlash / trailerFlashSeconds).clamp(0.0, 1.0);
+    return t * t;
+  }
+
+  /// Seconds spent in the current phase.
+  double get trailerIntoPhase {
+    var t = _trailerClock % trailerSeconds;
+    for (final p in trailerPhases) {
+      if (t < p.seconds) return t;
+      t -= p.seconds;
+    }
+    return 0;
+  }
 
   SpliceGame({int? seed, this.enableAudio = true}) : _seed = seed;
 
@@ -92,11 +154,8 @@ class SpliceGame extends FlameGame {
     bootComplete = true;
 
     if (trailerMode) {
-      state.level = 24;
-      state.time = 540;
-      state.maxHp = 260;
-      state.hp = 260;
-      _showcaseLoadout(0);
+      _applyPhase(trailerPhases.first, clearField: true);
+      _trailerPhase = 0;
     } else if (demoMode) {
       _seedDemoAbilities();
     }
@@ -146,89 +205,128 @@ class SpliceGame extends FlameGame {
     state.hp = state.maxHp;
     state.invulnerable = math.max(state.invulnerable, 0.5);
 
-    final act = (_trailerClock / trailerActSeconds).floor() % trailerActs;
-    if (act != _trailerAct) {
-      _trailerAct = act;
-      _showcaseLoadout(act);
+    if (_trailerFlash > 0) _trailerFlash -= dt;
+
+    // Which act the clock is in.
+    var t = _trailerClock % trailerSeconds;
+    var index = 0;
+    for (var i = 0; i < trailerPhases.length; i++) {
+      if (t < trailerPhases[i].seconds) {
+        index = i;
+        break;
+      }
+      t -= trailerPhases[i].seconds;
+      index = i + 1;
+    }
+    index = index.clamp(0, trailerPhases.length - 1);
+
+    if (index != _trailerPhase) {
+      // Cut on a flash. The loadout is replaced wholesale, and swapping it in
+      // plain sight reads as a glitch rather than as progression.
+      _trailerFlash = trailerFlashSeconds;
+      final looped = index < _trailerPhase;
+      _trailerPhase = index;
+      _applyPhase(trailerPhases[index], clearField: looped || index == 0);
     }
 
-    // The spawner alone is too polite for a trailer.
+    final phase = trailerPhases[index];
     _trailerSpawnTimer -= dt;
     if (_trailerSpawnTimer <= 0) {
-      _trailerSpawnTimer = 0.12;
-      _seedTrailerWave();
+      _trailerSpawnTimer = phase.spawnInterval;
+      _seedTrailerWave(phase);
+    }
+  }
+
+  /// Rebuilds the organism, and the numbers on the HUD, for one act.
+  void _applyPhase(TrailerPhase phase, {bool clearField = false}) {
+    state.level = phase.level;
+    state.time = phase.time;
+    state.maxHp = 100 + phase.level * 6.0;
+    state.hp = state.maxHp;
+
+    if (clearField) {
+      for (final e in state.enemies) {
+        e.alive = false;
+      }
+    }
+    state.abilities.clear();
+    for (final g in _phaseLoadout(phase)) {
+      state.addAbility(g);
     }
   }
 
   double _trailerSpawnTimer = 0;
 
-  /// Four organisms that look nothing like each other.
+  /// The organism on show for one act.
   ///
-  /// The pitch is that no two runs produce the same thing, so one evolved
-  /// loadout held for the whole video would undersell it.
-  void _showcaseLoadout(int act) {
-    const vectors = <List<genes.Vector>>[
-      [genes.Vector.orbit, genes.Vector.aura, genes.Vector.bolt],
-      [genes.Vector.beam, genes.Vector.chain, genes.Vector.swarm],
-      [genes.Vector.wave, genes.Vector.burst, genes.Vector.mine],
-      [genes.Vector.tether, genes.Vector.swarm, genes.Vector.beam],
+  /// Vectors are drawn from a fixed order so each act looks unlike the last,
+  /// and the first act is deliberately plain — a single bolt with no riders,
+  /// which is genuinely what a run opens with.
+  List<Genome> _phaseLoadout(TrailerPhase phase) {
+    const order = <genes.Vector>[
+      genes.Vector.bolt,
+      genes.Vector.orbit,
+      genes.Vector.beam,
+      genes.Vector.aura,
+      genes.Vector.chain,
+      genes.Vector.swarm,
     ];
-    const payloads = <List<genes.Payload>>[
-      [genes.Payload.frost, genes.Payload.shock, genes.Payload.kinetic],
-      [genes.Payload.burn, genes.Payload.voidp, genes.Payload.bleed],
-      [genes.Payload.corrode, genes.Payload.frost, genes.Payload.burn],
-      [genes.Payload.shock, genes.Payload.bleed, genes.Payload.voidp],
+    const pays = <genes.Payload>[
+      genes.Payload.kinetic,
+      genes.Payload.frost,
+      genes.Payload.burn,
+      genes.Payload.shock,
+      genes.Payload.voidp,
+      genes.Payload.bleed,
     ];
-    final vs = vectors[act];
-    final ps = payloads[act];
     final rng = state.rng;
-
-    state.abilities.clear();
-    for (var i = 0; i < vs.length; i++) {
-      state.addAbility(Genome(
-        vector: vs[i],
-        // A secondary vector on each, so every ability on screen is visibly a
-        // hybrid rather than a starting gene.
-        subVector: vs[(i + 1) % vs.length],
-        payload: ps[i],
-        subPayload: ps[(i + 2) % ps.length],
-        trigger: genes.Trigger.timer,
-        riders: {
-          genes.Rider.amplify: 7 + i * 2,
-          genes.Rider.rapid: 6,
-          genes.Rider.split: 3 + i,
-          genes.Rider.pierce: 4,
-          genes.Rider.seek: 5,
-          genes.Rider.reach: 3,
-          genes.Rider.bloom: 3,
-          genes.Rider.echo: 3,
-        },
-        generation: 5,
-        seed: rng.rangeInt(0, 1 << 30),
-      ));
-    }
+    return [
+      for (var i = 0; i < phase.abilities; i++)
+        Genome(
+          vector: order[i % order.length],
+          subVector: phase.hybrid ? order[(i + 2) % order.length] : null,
+          payload: pays[i % pays.length],
+          subPayload: phase.hybrid ? pays[(i + 3) % pays.length] : null,
+          trigger: genes.Trigger.timer,
+          riders: phase.riders == 0
+              ? const {}
+              : {
+                  genes.Rider.amplify: phase.riders,
+                  genes.Rider.rapid: (phase.riders * 0.8).round(),
+                  genes.Rider.split: (phase.riders * 0.5).round(),
+                  genes.Rider.pierce: (phase.riders * 0.5).round(),
+                  genes.Rider.seek: (phase.riders * 0.6).round(),
+                  genes.Rider.reach: (phase.riders * 0.4).round(),
+                  genes.Rider.bloom: (phase.riders * 0.35).round(),
+                  genes.Rider.echo: (phase.riders * 0.35).round(),
+                },
+          generation: phase.generation,
+          seed: rng.rangeInt(0, 1 << 30),
+        ),
+    ];
   }
 
-  void _seedTrailerWave() {
+  void _seedTrailerWave(TrailerPhase phase) {
     const fodder = ['crawler', 'spiker', 'weaver', 'mote', 'floater'];
     final rng = state.rng;
-    for (var i = 0; i < 3; i++) {
+    for (var i = 0; i < phase.wave; i++) {
       final e = state.enemyPool.obtain();
       if (e == null) return;
       final a = rng.range(0, math.pi * 2);
       final r = state.viewHalfWidth + rng.range(30, 140);
       e.spawn(genes_enemy(fodder[rng.rangeInt(0, fodder.length)]),
           state.px + math.cos(a) * r, state.py + math.sin(a) * r,
-          rng.rangeInt(0, 4), 2.5);
+          rng.rangeInt(0, 4), phase.enemyHp);
     }
     // The occasional heavy, for silhouette variety.
-    if (rng.chance(0.08)) {
+    if (phase.generation >= 2 && rng.chance(0.08)) {
       final e = state.enemyPool.obtain();
       if (e == null) return;
       final a = rng.range(0, math.pi * 2);
       final r = state.viewHalfWidth + 110;
       e.spawn(genes_enemy(rng.chance(0.5) ? 'brute' : 'lancer'),
-          state.px + math.cos(a) * r, state.py + math.sin(a) * r, 0, 2.5);
+          state.px + math.cos(a) * r, state.py + math.sin(a) * r, 0,
+          phase.enemyHp);
     }
   }
 
@@ -317,4 +415,43 @@ class SpliceGame extends FlameGame {
     uiPaused = false;
   }
 
+}
+
+/// One act of the trailer.
+class TrailerPhase {
+  final String caption;
+  final double seconds;
+
+  /// How much of an organism the player has by this point.
+  final int abilities;
+  final int generation;
+  final int riders;
+
+  /// Whether each ability carries a second vector and payload — the visible
+  /// signature of a splice, and false for the opening act on purpose.
+  final bool hybrid;
+
+  /// How hard the swarm presses.
+  final double spawnInterval;
+  final double enemyHp;
+
+  /// What the HUD reads, so the footage is internally consistent.
+  final int level;
+  final double time;
+
+  const TrailerPhase({
+    required this.caption,
+    required this.seconds,
+    required this.abilities,
+    required this.generation,
+    required this.riders,
+    required this.hybrid,
+    required this.spawnInterval,
+    required this.enemyHp,
+    required this.level,
+    required this.time,
+  });
+
+  /// Enemies per wave, scaled with how far into a run this act pretends to be.
+  int get wave => generation == 0 ? 1 : (generation >= 6 ? 4 : 2);
 }
