@@ -93,7 +93,11 @@ touch "$OUT/.nojekyll"
 if [ "$TARGET" != "pages" ]; then
   ZIP="build/splice-$TARGET.zip"
   rm -f "$ZIP"
-  (cd "$OUT" && zip -qr "../../$ZIP" .)
+  # Excludes macOS metadata and the incremental build marker: portals unpack
+  # the archive as-is, and a .DS_Store in a game bundle is somebody's desktop
+  # state shipped to strangers.
+  (cd "$OUT" && zip -qr "../../$ZIP" . \
+      -x '.DS_Store' '*/.DS_Store' '.last_build_id')
   echo "==> $ZIP  ($(du -h "$ZIP" | cut -f1))"
 fi
 
