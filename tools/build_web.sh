@@ -59,7 +59,16 @@ else
   echo "==> leaderboard: $SUPABASE_URL"
 fi
 
+# --pwa-strategy=none: no service worker.
+#
+# Flutter's default registers one that caches the whole app, so a browser that
+# has run the game before keeps serving the previous main.dart.js after an
+# update. On a portal that means a freshly uploaded build tests as though the
+# fix were never made — and players stay on a stale version after every
+# release. There is nothing to gain here in exchange: the game is loaded from
+# inside someone else's page, which is online by definition.
 flutter build web --release --base-href "$BASE" \
+  --pwa-strategy=none \
   --dart-define=SUPABASE_URL="$SUPABASE_URL" \
   --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
@@ -73,6 +82,11 @@ open(p, 'w').write(s)
 "
   echo "==> base href rewritten to ./"
 fi
+
+# Emitted even with --pwa-strategy=none, and never referenced. Removing it
+# saves a file slot against the portal's limit and, more usefully, stops
+# anyone concluding from its presence that a service worker is still in play.
+rm -f "$OUT/flutter_service_worker.js"
 
 touch "$OUT/.nojekyll"
 
