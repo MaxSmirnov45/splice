@@ -51,5 +51,39 @@ void main() {
   testWidgets('no button when no backend is configured', (tester) async {
     await pump(tester, _FakeBoard(isAvailable: false));
     expect(find.text('LEADERBOARD'), findsNothing);
+    expect(find.textContaining('leaderboard name'), findsNothing,
+        reason: 'nothing about the board when there is no board');
+  });
+
+  // The name was asked for exactly once, at the end of the first run, and then
+  // stored forever. A typo or a shared device left the player stuck with it.
+  testWidgets('the posting name can be changed', (tester) async {
+    final save = SaveData()..playerName = 'typoo';
+    await tester.pumpWidget(MaterialApp(
+      home: TitleScreen(
+        save: save,
+        onPlay: () {},
+        leaderboard: _FakeBoard(),
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.textContaining('posting as typoo'), findsOneWidget);
+    await tester.tap(find.textContaining('posting as typoo'));
+    await tester.pump();
+
+    expect(find.text('LEADERBOARD NAME'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), 'maxim');
+    await tester.tap(find.text('SAVE'));
+    await tester.pump();
+
+    expect(save.playerName, 'maxim');
+    expect(find.textContaining('posting as maxim'), findsOneWidget);
+  });
+
+  testWidgets('a player who never posted is invited to set a name',
+      (tester) async {
+    await pump(tester, _FakeBoard());
+    expect(find.textContaining('set your leaderboard name'), findsOneWidget);
   });
 }

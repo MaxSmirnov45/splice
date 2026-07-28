@@ -68,15 +68,22 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 10),
               child: Row(
                 children: [
-                  Text('LEADERBOARD',
-                      style: Skin.label(
-                          size: 18, color: Skin.text, weight: FontWeight.w700)),
+                  Text(
+                    'LEADERBOARD',
+                    style: Skin.label(
+                      size: 18,
+                      color: Skin.text,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
                   const Spacer(),
                   GestureDetector(
                     onTap: widget.onClose,
                     child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 8,
+                      ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(color: Skin.line),
@@ -109,8 +116,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _message('Could not reach the leaderboard',
-              'Check your connection and try again.'),
+          _message(
+            'Could not reach the leaderboard',
+            'Check your connection and try again.',
+          ),
           const SizedBox(height: 16),
           GestureDetector(
             onTap: _load,
@@ -120,8 +129,10 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: Skin.accent),
               ),
-              child: Text('RETRY',
-                  style: Skin.label(size: 11, color: Skin.accent)),
+              child: Text(
+                'RETRY',
+                style: Skin.label(size: 11, color: Skin.accent),
+              ),
             ),
           ),
         ],
@@ -142,7 +153,8 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
           // Matching on the run's numbers rather than an id: submission is
           // fire-and-forget, so the row comes back from the server without
           // anything tying it to this device.
-          final mine = you != null &&
+          final mine =
+              you != null &&
               e.name == you.name &&
               (e.time - you.time).abs() < 0.5 &&
               e.kills == you.kills;
@@ -171,11 +183,14 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
         children: [
           SizedBox(
             width: 32,
-            child: Text('${e.rank}',
-                style: Skin.label(
-                    size: 12,
-                    color: medal,
-                    weight: (e.rank ?? 99) <= 3 ? FontWeight.w700 : FontWeight.w500)),
+            child: Text(
+              '${e.rank}',
+              style: Skin.label(
+                size: 12,
+                color: medal,
+                weight: (e.rank ?? 99) <= 3 ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
           ),
           Expanded(
             child: Text(
@@ -183,49 +198,62 @@ class _LeaderboardScreenState extends State<LeaderboardScreen> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Skin.label(
-                  size: 12,
-                  color: mine ? Skin.accent : Skin.text,
-                  weight: FontWeight.w700),
+                size: 12,
+                color: mine ? Skin.accent : Skin.text,
+                weight: FontWeight.w700,
+              ),
             ),
           ),
           _stat('LV', '${e.level}'),
           _stat('G', '${e.generation}'),
           const SizedBox(width: 6),
-          Text(_clock(e.time),
-              style: Skin.label(
-                  size: 13, color: Skin.text, weight: FontWeight.w700)),
+          Text(
+            _clock(e.time),
+            style: Skin.label(
+              size: 13,
+              color: Skin.text,
+              weight: FontWeight.w700,
+            ),
+          ),
         ],
       ),
     );
   }
 
   Widget _stat(String label, String value) => Padding(
-        padding: const EdgeInsets.only(right: 9),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('$label ', style: Skin.label(size: 8)),
-            Text(value, style: Skin.label(size: 10, color: Skin.dim)),
-          ],
-        ),
-      );
+    padding: const EdgeInsets.only(right: 9),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('$label ', style: Skin.label(size: 8)),
+        Text(value, style: Skin.label(size: 10, color: Skin.dim)),
+      ],
+    ),
+  );
 
   Widget _message(String title, String detail) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(title,
-                textAlign: TextAlign.center,
-                style: Skin.label(
-                    size: 13, color: Skin.text, weight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            Text(detail,
-                textAlign: TextAlign.center,
-                style: Skin.label(size: 10).copyWith(height: 1.6)),
-          ],
+    padding: const EdgeInsets.symmetric(horizontal: 32),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: Skin.label(
+            size: 13,
+            color: Skin.text,
+            weight: FontWeight.w700,
+          ),
         ),
-      );
+        const SizedBox(height: 8),
+        Text(
+          detail,
+          textAlign: TextAlign.center,
+          style: Skin.label(size: 10).copyWith(height: 1.6),
+        ),
+      ],
+    ),
+  );
 }
 
 /// Asks for the name that will appear on the public board.
@@ -237,11 +265,20 @@ class NamePrompt extends StatefulWidget {
   final void Function(String name) onSubmit;
   final VoidCallback onSkip;
 
+  /// Wording, so the same prompt serves both the end of a run and a later
+  /// change of mind — those are different moments and should not read alike.
+  final String title;
+  final String blurb;
+  final String action;
+
   const NamePrompt({
     super.key,
     required this.initial,
     required this.onSubmit,
     required this.onSkip,
+    this.title = 'POST YOUR RUN',
+    this.blurb = 'Pick a name for the global leaderboard.',
+    this.action = 'POST',
   });
 
   @override
@@ -249,8 +286,9 @@ class NamePrompt extends StatefulWidget {
 }
 
 class _NamePromptState extends State<NamePrompt> {
-  late final TextEditingController _controller =
-      TextEditingController(text: widget.initial);
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.initial,
+  );
 
   @override
   void dispose() {
@@ -276,13 +314,21 @@ class _NamePromptState extends State<NamePrompt> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('POST YOUR RUN',
-                textAlign: TextAlign.center,
-                style: Skin.label(
-                    size: 18, color: Skin.text, weight: FontWeight.w700)),
+            Text(
+              widget.title,
+              textAlign: TextAlign.center,
+              style: Skin.label(
+                size: 18,
+                color: Skin.text,
+                weight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: 10),
-            Text('Pick a name for the global leaderboard.',
-                textAlign: TextAlign.center, style: Skin.label(size: 10)),
+            Text(
+              widget.blurb,
+              textAlign: TextAlign.center,
+              style: Skin.label(size: 10).copyWith(height: 1.5),
+            ),
             const SizedBox(height: 20),
             TextField(
               controller: _controller,
@@ -310,7 +356,7 @@ class _NamePromptState extends State<NamePrompt> {
               ),
             ),
             const SizedBox(height: 14),
-            _button('POST', Skin.accent, _submit),
+            _button(widget.action, Skin.accent, _submit),
             const SizedBox(height: 8),
             _button('NOT NOW', Skin.dim, widget.onSkip),
           ],
@@ -330,9 +376,14 @@ class _NamePromptState extends State<NamePrompt> {
             border: Border.all(color: colour, width: 2),
           ),
           child: Center(
-            child: Text(label,
-                style: Skin.label(
-                    size: 13, color: colour, weight: FontWeight.w700)),
+            child: Text(
+              label,
+              style: Skin.label(
+                size: 13,
+                color: colour,
+                weight: FontWeight.w700,
+              ),
+            ),
           ),
         ),
       );

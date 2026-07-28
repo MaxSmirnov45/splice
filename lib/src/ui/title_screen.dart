@@ -42,6 +42,7 @@ class _TitleScreenState extends State<TitleScreen>
   late final Leaderboard _leaderboard =
       widget.leaderboard ?? createLeaderboard();
   bool _showBoard = false;
+  bool _showNamePrompt = false;
 
   void _openBoard() => setState(() => _showBoard = true);
 
@@ -146,6 +147,24 @@ class _TitleScreenState extends State<TitleScreen>
                 if (_leaderboard.isAvailable) ...[
                   const SizedBox(height: 10),
                   _secondaryButton('LEADERBOARD', _openBoard),
+                  // The name is stored on the device and was previously asked
+                  // for exactly once, with no way back — a typo, or a shared
+                  // machine, and the player was stuck with it forever.
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => setState(() => _showNamePrompt = true),
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Text(
+                        widget.save.playerName.trim().isEmpty
+                            ? 'set your leaderboard name'
+                            : 'posting as ${widget.save.playerName} · change',
+                        textAlign: TextAlign.center,
+                        style: Skin.label(size: 9, color: Skin.dim),
+                      ),
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 12),
                 Text(
@@ -162,6 +181,21 @@ class _TitleScreenState extends State<TitleScreen>
             LeaderboardScreen(
               leaderboard: _leaderboard,
               onClose: () => setState(() => _showBoard = false),
+            ),
+          if (_showNamePrompt)
+            NamePrompt(
+              initial: widget.save.playerName,
+              title: 'LEADERBOARD NAME',
+              blurb:
+                  'Runs you post from now on will use this name. Runs '
+                  'already on the board keep the name they were posted under.',
+              action: 'SAVE',
+              onSubmit: (name) {
+                widget.save.playerName = name;
+                widget.save.save();
+                setState(() => _showNamePrompt = false);
+              },
+              onSkip: () => setState(() => _showNamePrompt = false),
             ),
         ],
       ),
