@@ -3,10 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../core/leaderboard.dart';
 import '../core/rng.dart';
 import '../core/save.dart';
 import '../genome/genome.dart';
 import 'ability_card.dart';
+import 'leaderboard_screen.dart';
 import 'sigil.dart';
 
 /// Front screen: identity, records, and one button.
@@ -18,7 +20,15 @@ class TitleScreen extends StatefulWidget {
   final SaveData save;
   final VoidCallback onPlay;
 
-  const TitleScreen({super.key, required this.save, required this.onPlay});
+  /// Overridable so a test can drive the board without a live backend.
+  final Leaderboard? leaderboard;
+
+  const TitleScreen({
+    super.key,
+    required this.save,
+    required this.onPlay,
+    this.leaderboard,
+  });
 
   @override
   State<TitleScreen> createState() => _TitleScreenState();
@@ -28,6 +38,12 @@ class _TitleScreenState extends State<TitleScreen>
     with SingleTickerProviderStateMixin {
   late final Ticker _ticker;
   double _t = 0;
+
+  late final Leaderboard _leaderboard =
+      widget.leaderboard ?? createLeaderboard();
+  bool _showBoard = false;
+
+  void _openBoard() => setState(() => _showBoard = true);
 
   late final List<_Drifter> _drifters;
 
@@ -124,6 +140,13 @@ class _TitleScreenState extends State<TitleScreen>
                 if (save.runs > 0) _records(save),
                 const SizedBox(height: 22),
                 _playButton(),
+                // The board was previously only reachable from the pause menu
+                // and the game-over screen, which is nowhere a player looks
+                // for it. It belongs on the front door.
+                if (_leaderboard.isAvailable) ...[
+                  const SizedBox(height: 10),
+                  _secondaryButton('LEADERBOARD', _openBoard),
+                ],
                 const SizedBox(height: 12),
                 Text(
                   save.runs == 0
@@ -135,6 +158,11 @@ class _TitleScreenState extends State<TitleScreen>
               ],
             ),
           ),
+          if (_showBoard)
+            LeaderboardScreen(
+              leaderboard: _leaderboard,
+              onClose: () => setState(() => _showBoard = false),
+            ),
         ],
       ),
     );
@@ -172,6 +200,28 @@ class _TitleScreenState extends State<TitleScreen>
       const SizedBox(height: 3),
       Text(label, style: Skin.label(size: 8, color: Skin.dim)),
     ],
+  );
+
+  Widget _secondaryButton(String label, VoidCallback onTap) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: 46,
+      decoration: BoxDecoration(
+        color: Skin.panel.withValues(alpha: 0.7),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Skin.line),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: Skin.label(
+            size: 12,
+            color: Skin.text,
+            weight: FontWeight.w700,
+          ).copyWith(letterSpacing: 3),
+        ),
+      ),
+    ),
   );
 
   Widget _playButton() => GestureDetector(
