@@ -53,4 +53,43 @@ void main() {
     expect(ranked.isYou, isTrue);
     expect(e.rank, isNull, reason: 'the original must be untouched');
   });
+
+  // The board shows players, not runs. The table holds every run ever posted,
+  // including rows from before the game only submitted personal bests.
+  group('one row per player', () {
+    ScoreEntry e(String name, double time) =>
+        ScoreEntry(name: name, time: time, level: 1, kills: 0, generation: 0);
+
+    test('keeps each name only once, at their best time', () {
+      final board = bestPerName([
+        e('max', 300),
+        e('ana', 250),
+        e('max', 200),
+        e('max', 10),
+        e('ana', 5),
+      ]);
+      expect(board.map((r) => r.name), ['max', 'ana']);
+      expect(board.first.time, 300, reason: 'the best run must be the one kept');
+      expect(board.map((r) => r.rank), [1, 2],
+          reason: 'ranks must be contiguous after collapsing duplicates');
+    });
+
+    test('treats names as one player regardless of case', () {
+      final board = bestPerName([e('Max', 300), e('max', 250)]);
+      expect(board, hasLength(1),
+          reason: 'case variants would otherwise farm duplicate rows');
+    });
+
+    test('respects the limit after collapsing, not before', () {
+      final board = bestPerName([
+        e('a', 100), e('a', 90), e('a', 80),
+        e('b', 70), e('c', 60), e('d', 50),
+      ], limit: 3);
+      expect(board.map((r) => r.name), ['a', 'b', 'c']);
+    });
+
+    test('an empty board stays empty', () {
+      expect(bestPerName(const []), isEmpty);
+    });
+  });
 }

@@ -93,7 +93,10 @@ void main() {
     }
     expect(game, isNotNull, reason: 'the game never finished loading');
 
-    game!.state.hp = 0;
+    // A run worth posting: only a personal best reaches the board, and a
+    // fresh save has no best, so this just has to be non-zero.
+    game!.state.time = 120;
+    game.state.hp = 0;
     game.state.gameOver = true;
     for (var i = 0; i < 8; i++) {
       await tester.pump(const Duration(milliseconds: 16));

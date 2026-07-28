@@ -58,6 +58,24 @@ class ScoreEntry {
       );
 }
 
+/// Reduces a time-ordered run of entries to one row per player, ranked.
+///
+/// The first entry for a name is that player's best, because the caller hands
+/// them over sorted by time descending. Kept as a free function so it can be
+/// tested without a network.
+List<ScoreEntry> bestPerName(Iterable<ScoreEntry> ordered, {int limit = 100}) {
+  final seen = <String>{};
+  final out = <ScoreEntry>[];
+  for (final e in ordered) {
+    // Case-insensitive: "Max" and "max" are one player as far as a board is
+    // concerned, and letting both stand invites trivial duplicate farming.
+    if (!seen.add(e.name.toLowerCase())) continue;
+    out.add(e.copyWith(rank: out.length + 1));
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
 /// A global scoreboard.
 ///
 /// Abstracted so the backend can change without touching the game: a hosted
@@ -121,10 +139,15 @@ class SupabaseLeaderboard implements Leaderboard {
     if (!configured) return const [];
     try {
       // Ordered by survival time, which is the run's headline number.
+      //
+      // Over-fetched because the board shows one row per player and the table
+      // holds every run ever posted. The game only submits personal bests now,
+      // but rows predating that rule are still there, and a player switching
+      // devices posts under the same name from a fresh set of records.
       final uri = Uri.parse(
         '$_url/rest/v1/$_table'
         '?select=name,time,level,kills,generation'
-        '&order=time.desc&limit=$limit',
+        '&order=time.desc&limit=${limit * 4}',
       );
       final res = await http
           .get(uri, headers: _headers)
@@ -134,10 +157,7 @@ class SupabaseLeaderboard implements Leaderboard {
         return const [];
       }
       final rows = (jsonDecode(res.body) as List).cast<Map<String, dynamic>>();
-      return [
-        for (var i = 0; i < rows.length; i++)
-          ScoreEntry.fromJson(rows[i]).copyWith(rank: i + 1),
-      ];
+      return bestPerName(rows.map(ScoreEntry.fromJson), limit: limit);
     } catch (e) {
       debugPrint('leaderboard: fetch error ($e)');
       return const [];

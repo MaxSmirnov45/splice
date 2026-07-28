@@ -32,7 +32,11 @@ enum EndOfRunAction {
   /// No backend, so the board is never mentioned.
   nothing,
 
-  /// First run: ask what name to post under, then post.
+  /// The player has been further before. Their better run is already up
+  /// there, so this one has nothing to add.
+  notPersonalBest,
+
+  /// First run worth posting: ask what name to post under, then post.
   askForName,
 
   /// The name is already known, so post without interrupting.
@@ -44,11 +48,18 @@ enum EndOfRunAction {
 /// Pulled out of the widget because getting it wrong is invisible: a run that
 /// silently fails to post looks exactly like a run that posted fine, and the
 /// board has no update path to correct it afterwards.
+///
+/// Only a personal best goes up. The board is ranked by survival time, so
+/// every lesser run is a row nobody will ever read — and a player who dies
+/// early four times in a row should not push four dead entries at it.
 EndOfRunAction endOfRunAction({
   required bool boardAvailable,
   required String playerName,
+  required double runTime,
+  required double bestTime,
 }) {
   if (!boardAvailable) return EndOfRunAction.nothing;
+  if (runTime <= bestTime) return EndOfRunAction.notPersonalBest;
   return playerName.trim().isEmpty
       ? EndOfRunAction.askForName
       : EndOfRunAction.postNow;
@@ -107,6 +118,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
 
   /// Whether the finished run has been sent to the board.
   bool _posted = false;
+
+  /// Whether it is worth sending at all — only a personal best is.
+  bool _postable = false;
 
   @override
   void initState() {
@@ -199,11 +213,18 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     // The board asks for itself rather than waiting to be found. A run only
     // ends once, and a player who has to go looking for a "post score" button
     // has already stopped caring about the board.
+    // Compared against the records as they stand: _recordRun folds this run in
+    // later, when the player leaves the game-over screen.
     final action = endOfRunAction(
       boardAvailable: _leaderboard.isAvailable,
       playerName: widget.save.playerName,
+      runTime: world.time,
+      bestTime: widget.save.bestTime,
     );
-    _pendingScore = action == EndOfRunAction.nothing ? null : _entryForRun();
+    _postable =
+        action != EndOfRunAction.nothing &&
+        action != EndOfRunAction.notPersonalBest;
+    _pendingScore = _postable ? _entryForRun() : null;
     final needsName = action == EndOfRunAction.askForName;
     if (action == EndOfRunAction.postNow) {
       _posted = true;
@@ -251,6 +272,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         // it could never be corrected.
         _pendingScore = null;
         _posted = false;
+        _postable = false;
         _showNamePrompt = false;
       }
     });
@@ -329,6 +351,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _runRecorded = false;
       _pendingScore = null;
       _posted = false;
+      _postable = false;
     });
     _ads.gameplayStart();
   }
@@ -365,7 +388,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// Only reachable when the automatic post did not happen — that is, when the
   /// player dismissed the name prompt and later changed their mind.
   Future<void> _postScore() async {
-    if (!_leaderboard.isAvailable || _posted) return;
+    if (!_leaderboard.isAvailable || _posted || !_postable) return;
     _pendingScore ??= _entryForRun();
     if (widget.save.playerName.trim().isEmpty) {
       setState(() => _showNamePrompt = true);
@@ -477,6 +500,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 newBest: _newBest,
                 posted: _posted,
                 postedAs: widget.save.playerName,
+                postable: _postable,
                 onViewBoard: _leaderboard.isAvailable ? _openBoard : null,
                 onPostScore: _leaderboard.isAvailable && !_posted
                     ? _postScore
@@ -882,6 +906,11 @@ class GameOverScreen extends StatelessWidget {
   final bool posted;
   final String postedAs;
 
+  /// False when the run was not a personal best, so it was never a candidate.
+  /// Worth saying out loud — a silent non-post is indistinguishable from a
+  /// broken one.
+  final bool postable;
+
   /// Null when no scoreboard backend is configured, in which case nothing
   /// about the board is offered rather than shown and failing.
   final VoidCallback? onViewBoard;
@@ -900,6 +929,7 @@ class GameOverScreen extends StatelessWidget {
     this.watchingAd = false,
     this.posted = false,
     this.postedAs = '',
+    this.postable = false,
     this.onViewBoard,
     this.onPostScore,
   });
@@ -953,11 +983,9 @@ class GameOverScreen extends StatelessWidget {
             if (onPostScore != null) ...[
               _button('POST TO LEADERBOARD', Skin.text, onPostScore!),
               const SizedBox(height: 10),
-            ] else if (posted && onViewBoard != null) ...[
+            ] else if (onViewBoard != null) ...[
               Text(
-                postedAs.isEmpty
-                    ? 'posted to the leaderboard'
-                    : 'posted as $postedAs',
+                _boardNote(),
                 textAlign: TextAlign.center,
                 style: Skin.label(size: 9.5, color: Skin.dim),
               ),
@@ -970,6 +998,17 @@ class GameOverScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// What became of this run as far as the board is concerned.
+  String _boardNote() {
+    if (posted) {
+      return postedAs.isEmpty
+          ? 'posted to the leaderboard'
+          : 'posted as $postedAs';
+    }
+    if (!postable) return 'only your best run goes on the board';
+    return 'not posted';
   }
 
   /// Continue-for-an-ad. Kept visually distinct from the plain buttons so it
