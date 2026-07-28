@@ -17,6 +17,15 @@
 #   present, so shipping the wrong script means the wrong integration with no
 #   visible symptom until an ad is requested.
 #
+# Leaderboard credentials come from the environment, not the repository:
+#
+#   export SUPABASE_URL=https://xxxx.supabase.co
+#   export SUPABASE_ANON_KEY=sb_publishable_...
+#
+# Without them the build is perfectly playable but has no scoreboard, and says
+# so nowhere — which is how portal bundles shipped without one while the
+# GitHub Pages workflow, the only place the credentials were wired up, had it.
+#
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -42,7 +51,17 @@ trap restore EXIT
 
 python3 tools/portal_sdk.py "$SRC" "$SDK"
 
-flutter build web --release --base-href "$BASE"
+SUPABASE_URL="${SUPABASE_URL:-}"
+SUPABASE_ANON_KEY="${SUPABASE_ANON_KEY:-}"
+if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+  echo "==> WARNING: no SUPABASE_URL / SUPABASE_ANON_KEY — building WITHOUT a leaderboard" >&2
+else
+  echo "==> leaderboard: $SUPABASE_URL"
+fi
+
+flutter build web --release --base-href "$BASE" \
+  --dart-define=SUPABASE_URL="$SUPABASE_URL" \
+  --dart-define=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY"
 
 if [ "$TARGET" != "pages" ]; then
   python3 -c "
