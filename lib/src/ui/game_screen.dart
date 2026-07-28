@@ -465,16 +465,49 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 atlas: _game.atlas,
                 onDone: _closeSplice,
               ),
+            // Ordering here is load-bearing. A Stack paints its last child on
+            // top, and the game-over screen used to be last — so the name
+            // prompt and the board both opened underneath it and were
+            // invisible. Anything the summary can raise must come after it.
+            if (_showGameOver)
+              GameOverScreen(
+                world: _game.state,
+                onRestart: _restart,
+                onExit: _quitToMenu,
+                newBest: _newBest,
+                posted: _posted,
+                postedAs: widget.save.playerName,
+                onViewBoard: _leaderboard.isAvailable ? _openBoard : null,
+                onPostScore: _leaderboard.isAvailable && !_posted
+                    ? _postScore
+                    : null,
+                // Offered only when a revive remains and an ad is actually
+                // loaded, so the button never appears and then fails.
+                onReviveForAd:
+                    _game.state.canRevive && _ads.isReady && !_watchingAd
+                    ? _reviveForAd
+                    : null,
+                watchingAd: _watchingAd,
+              ),
             if (_showNamePrompt)
               NamePrompt(
                 initial: widget.save.playerName,
                 onSubmit: (name) async {
                   widget.save.playerName = name;
                   widget.save.save();
-                  // Reuses the entry captured when the run ended rather than
-                  // rebuilding it, so the time on the board is the time the
-                  // player died at, not the time they finished typing.
-                  _pendingScore ??= _entryForRun();
+                  // Keeps the run captured when the player died — so the
+                  // time on the board is the time they died at, not the time
+                  // they finished typing — but takes the name they just gave.
+                  // Reusing the entry wholesale posted them as "anonymous",
+                  // since it was built before a name existed.
+                  final run = _pendingScore ?? _entryForRun();
+                  _pendingScore = ScoreEntry(
+                    name: name,
+                    time: run.time,
+                    level: run.level,
+                    kills: run.kills,
+                    generation: run.generation,
+                  );
                   setState(() {
                     _showNamePrompt = false;
                     _posted = true;
@@ -489,25 +522,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 leaderboard: _leaderboard,
                 highlight: _pendingScore,
                 onClose: _closeBoard,
-              ),
-            if (_showGameOver)
-              GameOverScreen(
-                world: _game.state,
-                onRestart: _restart,
-                onExit: _quitToMenu,
-                newBest: _newBest,
-                posted: _posted,
-                postedAs: widget.save.playerName,
-                onViewBoard: _leaderboard.isAvailable ? _openBoard : null,
-                onPostScore:
-                    _leaderboard.isAvailable && !_posted ? _postScore : null,
-                // Offered only when a revive remains and an ad is actually
-                // loaded, so the button never appears and then fails.
-                onReviveForAd:
-                    _game.state.canRevive && _ads.isReady && !_watchingAd
-                    ? _reviveForAd
-                    : null,
-                watchingAd: _watchingAd,
               ),
           ],
         ),
