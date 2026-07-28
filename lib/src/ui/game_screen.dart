@@ -781,6 +781,10 @@ class _PauseScreenState extends State<_PauseScreen> {
     final minutes = (world.time ~/ 60).toString().padLeft(2, '0');
     final seconds = (world.time % 60).floor().toString().padLeft(2, '0');
 
+    // Same squeeze as the game-over screen: this one carries two sliders on
+    // top of the statistics, so it is the taller of the two.
+    final tight = Panel.tight(context);
+
     return Container(
       color: Skin.bg.withValues(alpha: 0.93),
       child: Panel(
@@ -792,34 +796,34 @@ class _PauseScreenState extends State<_PauseScreen> {
               'PAUSED',
               textAlign: TextAlign.center,
               style: Skin.label(
-                size: 28,
+                size: tight ? 20 : 28,
                 color: Skin.text,
                 weight: FontWeight.w700,
               ).copyWith(letterSpacing: 6),
             ),
-            const SizedBox(height: 28),
-            _row('SURVIVED', '$minutes:$seconds'),
-            _row('LEVEL', '${world.level}'),
-            _row('KILLS', '${world.kills}'),
-            _row('ABILITIES', '${world.abilities.length}/6'),
-            const SizedBox(height: 24),
+            SizedBox(height: tight ? 12 : 28),
+            _row('SURVIVED', '$minutes:$seconds', tight),
+            _row('LEVEL', '${world.level}', tight),
+            _row('KILLS', '${world.kills}', tight),
+            _row('ABILITIES', '${world.abilities.length}/6', tight),
+            SizedBox(height: tight ? 12 : 24),
             _volumeSlider('MUSIC', sfx.musicVolume, (v) {
               sfx.setMusicVolume(v);
               widget.save.musicVolume = v;
               setState(() {});
             }),
-            const SizedBox(height: 8),
+            SizedBox(height: tight ? 4 : 8),
             _volumeSlider('SOUND', sfx.soundVolume, (v) {
               sfx.setSoundVolume(v);
               widget.save.soundVolume = v;
               setState(() {});
             }),
-            const SizedBox(height: 22),
-            _button('RESUME', Skin.accent, widget.onResume),
-            const SizedBox(height: 10),
-            _button('RESTART', Skin.dim, widget.onRestart),
-            const SizedBox(height: 10),
-            _button('MENU', Skin.dim, widget.onExit),
+            SizedBox(height: tight ? 12 : 22),
+            _button('RESUME', Skin.accent, widget.onResume, tight),
+            SizedBox(height: tight ? 6 : 10),
+            _button('RESTART', Skin.dim, widget.onRestart, tight),
+            SizedBox(height: tight ? 6 : 10),
+            _button('MENU', Skin.dim, widget.onExit, tight),
           ],
         ),
       ),
@@ -882,31 +886,31 @@ class _PauseScreenState extends State<_PauseScreen> {
   }
 
   /// A null [onTap] renders the button dimmed and inert.
-  Widget _button(String label, Color colour, VoidCallback? onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: colour.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: colour, width: 2),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: Skin.label(
-                size: 14,
-                color: colour,
-                weight: FontWeight.w700,
-              ),
-            ),
-          ),
+  Widget _button(
+    String label,
+    Color colour,
+    VoidCallback? onTap, [
+    bool tight = false,
+  ]) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: tight ? 42 : 52,
+      decoration: BoxDecoration(
+        color: colour.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colour, width: 2),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: Skin.label(size: 14, color: colour, weight: FontWeight.w700),
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _row(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 6),
+  Widget _row(String label, String value, [bool tight = false]) => Padding(
+    padding: EdgeInsets.symmetric(vertical: tight ? 3 : 6),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -973,6 +977,10 @@ class GameOverScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final minutes = (world.time ~/ 60).toString().padLeft(2, '0');
     final seconds = (world.time % 60).floor().toString().padLeft(2, '0');
+    // At the portal's shortest published sizes the MENU button fell off the
+    // bottom of the viewport. Reachable by scrolling, but a reviewer sees a
+    // half-cut button, and so does anyone playing un-fullscreened.
+    final tight = Panel.tight(context);
 
     return Container(
       color: Skin.bg.withValues(alpha: 0.95),
@@ -985,13 +993,13 @@ class GameOverScreen extends StatelessWidget {
               'CONSUMED',
               textAlign: TextAlign.center,
               style: Skin.label(
-                size: 30,
+                size: tight ? 22 : 30,
                 color: Skin.warn,
                 weight: FontWeight.w700,
               ),
             ),
             if (newBest) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: tight ? 4 : 8),
               Text(
                 'NEW RECORD',
                 textAlign: TextAlign.center,
@@ -1002,23 +1010,28 @@ class GameOverScreen extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 26),
-            _row('SURVIVED', '$minutes:$seconds'),
-            _row('LEVEL', '${world.level}'),
-            _row('KILLS', '${world.kills}'),
-            _row('DEEPEST LINEAGE', 'generation ${world.deepestGeneration}'),
-            _row('GENOMES HELD', '${world.heldGenomes.length}'),
-            const SizedBox(height: 30),
+            SizedBox(height: tight ? 12 : 26),
+            _row('SURVIVED', '$minutes:$seconds', tight),
+            _row('LEVEL', '${world.level}', tight),
+            _row('KILLS', '${world.kills}', tight),
+            _row(
+              'DEEPEST LINEAGE',
+              'generation ${world.deepestGeneration}',
+              tight,
+            ),
+            _row('GENOMES HELD', '${world.heldGenomes.length}', tight),
+            SizedBox(height: tight ? 14 : 30),
             if (onReviveForAd != null || watchingAd) ...[
-              _reviveButton(),
-              const SizedBox(height: 10),
+              _reviveButton(tight),
+              SizedBox(height: tight ? 6 : 10),
             ],
             _button(
               restarting ? 'STARTING…' : 'SPLICE AGAIN',
               Skin.accent,
               restarting ? null : onRestart,
+              tight,
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: tight ? 6 : 10),
             if (onViewBoard != null) ...[
               if (_boardNote() != null) ...[
                 Text(
@@ -1026,12 +1039,12 @@ class GameOverScreen extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: Skin.label(size: 9.5, color: Skin.dim),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: tight ? 5 : 8),
               ],
-              _button('LEADERBOARD', Skin.text, onViewBoard!),
-              const SizedBox(height: 10),
+              _button('LEADERBOARD', Skin.text, onViewBoard!, tight),
+              SizedBox(height: tight ? 6 : 10),
             ],
-            _button('MENU', Skin.dim, onExit),
+            _button('MENU', Skin.dim, onExit, tight),
           ],
         ),
       ),
@@ -1057,12 +1070,12 @@ class GameOverScreen extends StatelessWidget {
 
   /// Continue-for-an-ad. Kept visually distinct from the plain buttons so it
   /// reads as the offer it is rather than a normal menu option.
-  Widget _reviveButton() {
+  Widget _reviveButton([bool tight = false]) {
     const green = Color(0xFF6FE38A);
     return GestureDetector(
       onTap: watchingAd ? null : onReviveForAd,
       child: Container(
-        height: 58,
+        height: tight ? 46 : 58,
         decoration: BoxDecoration(
           color: green.withValues(alpha: watchingAd ? 0.06 : 0.16),
           borderRadius: BorderRadius.circular(14),
@@ -1101,31 +1114,31 @@ class GameOverScreen extends StatelessWidget {
   }
 
   /// A null [onTap] renders the button dimmed and inert.
-  Widget _button(String label, Color colour, VoidCallback? onTap) =>
-      GestureDetector(
-        onTap: onTap,
-        child: Container(
-          height: 52,
-          decoration: BoxDecoration(
-            color: colour.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: colour, width: 2),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: Skin.label(
-                size: 14,
-                color: colour,
-                weight: FontWeight.w700,
-              ),
-            ),
-          ),
+  Widget _button(
+    String label,
+    Color colour,
+    VoidCallback? onTap, [
+    bool tight = false,
+  ]) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      height: tight ? 42 : 52,
+      decoration: BoxDecoration(
+        color: colour.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: colour, width: 2),
+      ),
+      child: Center(
+        child: Text(
+          label,
+          style: Skin.label(size: 14, color: colour, weight: FontWeight.w700),
         ),
-      );
+      ),
+    ),
+  );
 
-  Widget _row(String label, String value) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 7),
+  Widget _row(String label, String value, [bool tight = false]) => Padding(
+    padding: EdgeInsets.symmetric(vertical: tight ? 3 : 7),
     child: Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

@@ -51,12 +51,24 @@ class Panel extends StatelessWidget {
     this.padding = const EdgeInsets.all(22),
   });
 
+  /// True when the viewport is too short for the comfortable spacing.
+  ///
+  /// The portal publishes the iframe sizes its players use, and the shortest
+  /// are 462 and 450 logical pixels tall. A screen laid out for a phone in
+  /// portrait runs off the bottom of those, and a reviewer sees a button cut
+  /// in half rather than a game.
+  static bool tight(BuildContext context) =>
+      MediaQuery.sizeOf(context).height < 560;
+
   @override
   Widget build(BuildContext context) {
+    final squeeze = tight(context);
     return SafeArea(
       child: Center(
         child: SingleChildScrollView(
-          padding: padding,
+          padding: squeeze
+              ? padding * 0.5
+              : padding,
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: maxWidth),
             child: child,

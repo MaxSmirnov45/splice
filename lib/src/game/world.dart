@@ -1,5 +1,7 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
+
 import '../core/rng.dart';
 import '../genome/genes.dart';
 import '../genome/genome.dart';
@@ -215,6 +217,23 @@ class World {
   /// The cap is deliberately below what sustained contact costs, so standing
   /// in a crowd is always a losing trade — leech extends survival rather than
   /// replacing it.
+  /// Velocity damping, quoted per sixtieth of a second.
+  ///
+  /// Applied through [_perSecond] rather than once per frame. Per frame it is
+  /// not physics at all but a function of the monitor: at 144 Hz knockback
+  /// bled off in a fraction of the time it took at 60 Hz, so enemies recovered
+  /// from a hit almost instantly and the game was quietly harder on better
+  /// hardware.
+  static const double enemyDamping = 0.86;
+  static const double pickupDamping = 0.9;
+
+  /// Crowd separation impulse, also quoted per sixtieth of a second.
+  static const double separationPush = 90.0;
+
+  /// Converts a per-sixtieth-of-a-second factor into one for [dt].
+  static double _perSecond(double perFrame, double dt) =>
+      math.pow(perFrame, dt * 60).toDouble();
+
   static const double leechBaseCap = 0.035;
   static const double leechCapPerStack = 0.16;
 
@@ -835,13 +854,15 @@ class World {
 
       _updateRanged(e, dt);
       _steerEnemy(e, dt);
-      _separate(e, i);
+      _separate(e, i, dt);
+      _capSpeed(e);
 
       e.x += e.vx * dt;
       e.y += e.vy * dt;
       // Knockback impulses bleed off; steering re-establishes intent.
-      e.vx *= 0.86;
-      e.vy *= 0.86;
+      final damp = _perSecond(enemyDamping, dt);
+      e.vx *= damp;
+      e.vy *= damp;
 
       final dx = px - e.x, dy = py - e.y;
       final touch = playerRadius + e.radius;
@@ -1029,7 +1050,16 @@ class World {
       e.vy += (dy / len) * speed * 8 * dt;
     }
 
-    // Cap so knockback and steering cannot compound into absurd velocities.
+  }
+
+  /// Caps a speed that steering, separation and knockback could otherwise
+  /// compound into something absurd.
+  ///
+  /// Applied after every contribution rather than in the middle of them. Run
+  /// between steering and separation it trimmed a partial velocity, and since
+  /// it runs once a frame the amount trimmed depended on the frame rate.
+  void _capSpeed(Enemy e) {
+    final speed = e.def.speed * (e.slowTime > 0 ? e.slowFactor : 1.0);
     final vlen = math.sqrt(e.vx * e.vx + e.vy * e.vy);
     final cap = speed * 2.6;
     if (vlen > cap) {
@@ -1040,7 +1070,11 @@ class World {
 
   /// Pushes overlapping enemies apart so a swarm reads as a crowd rather than
   /// a single stacked sprite.
-  void _separate(Enemy e, int selfIndex) {
+  void _separate(Enemy e, int selfIndex, double dt) {
+    // Scaled by time, not applied once per frame: at 144 Hz an unscaled push
+    // lands 2.4 times as often, and the swarm visibly repels harder on a
+    // faster monitor.
+    final step = dt * 60;
     final r = e.radius * 1.6;
     _hash.forEachNear(e.x, e.y, r, (i) {
       if (i == selfIndex) return;
@@ -1052,8 +1086,8 @@ class World {
       if (d2 >= min * min || d2 < 0.0001) return;
       final d = math.sqrt(d2);
       final push = (min - d) / min;
-      e.vx += (dx / d) * push * 90;
-      e.vy += (dy / d) * push * 90;
+      e.vx += (dx / d) * push * separationPush * step;
+      e.vy += (dy / d) * push * separationPush * step;
     });
   }
 
@@ -1189,6 +1223,12 @@ class World {
 
   // --- pickups ------------------------------------------------------------
 
+  /// Drops a pickup directly. Exposed so a test can measure the magnet
+  /// without having to arrange a kill first.
+  @visibleForTesting
+  void dropPickupForTest(double x, double y, double value) =>
+      _dropPickup(x, y, value);
+
   void _dropPickup(double x, double y, double value, {bool isHealth = false}) {
     final p = pickupPool.obtain();
     if (p == null) return;
@@ -1240,8 +1280,9 @@ class World {
       }
 
       // Loose scatter until the magnet takes over.
-      p.vx *= 0.9;
-      p.vy *= 0.9;
+      final damp = _perSecond(pickupDamping, dt);
+      p.vx *= damp;
+      p.vy *= damp;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
 
