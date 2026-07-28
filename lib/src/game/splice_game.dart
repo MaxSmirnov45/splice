@@ -260,8 +260,26 @@ class SpliceGame extends FlameGame {
     state.hp = state.maxHp;
 
     if (clearField) {
+      // Everything, not just the enemies. A cut back to the opening act with
+      // the previous act's shots, orbs and dying particles still in flight
+      // gives the whole trick away in one frame.
       for (final e in state.enemies) {
         e.alive = false;
+      }
+      for (final x in state.shots) {
+        x.alive = false;
+      }
+      for (final x in state.threats) {
+        x.alive = false;
+      }
+      for (final x in state.particles) {
+        x.alive = false;
+      }
+      for (final x in state.pickups) {
+        x.alive = false;
+      }
+      for (final x in state.arcs) {
+        x.alive = false;
       }
     }
     state.abilities.clear();
