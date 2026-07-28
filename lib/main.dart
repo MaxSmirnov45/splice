@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'src/core/save.dart';
 import 'src/ui/ability_card.dart';
 import 'src/ui/game_screen.dart';
+import 'src/game/splice_game.dart';
 import 'src/ui/title_screen.dart';
+import 'src/ui/trailer_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +35,12 @@ class SpliceApp extends StatelessWidget {
         brightness: Brightness.dark,
         scaffoldBackgroundColor: Skin.bg,
       ),
-      home: RootScreen(save: save),
+      // Straight into the scripted showcase when asked, skipping the title
+      // screen — a store video has twenty seconds and none of them should be
+      // a menu.
+      home: SpliceGame.trailerMode
+          ? const TrailerScreen()
+          : RootScreen(save: save),
     );
   }
 }
