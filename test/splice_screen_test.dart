@@ -224,4 +224,26 @@ void main() {
     expect(find.text('OFFSPRING'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  // Deciding whether to commit to a splice means knowing what the offspring
+  // will actually do, not just which genes it inherited.
+  testWidgets('the offspring preview describes what the child does',
+      (tester) async {
+    final world = await pumpScreen(tester);
+    await tapAbility(tester, world, 0);
+    await tapAbility(tester, world, 1);
+
+    expect(find.text('OFFSPRING'), findsOneWidget);
+    // Every description names when the ability fires.
+    expect(
+      find.descendant(
+        of: find.ancestor(
+          of: find.text('OFFSPRING'),
+          matching: find.byType(Column),
+        ).first,
+        matching: find.textContaining('Fires '),
+      ),
+      findsWidgets,
+    );
+  });
 }

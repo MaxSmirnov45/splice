@@ -326,6 +326,16 @@ class _SpliceScreenState extends State<SpliceScreen> {
                       '${child.payloadLabel} · ${child.triggerLabel}',
                       style: Skin.label(size: 9.5),
                     ),
+                    const SizedBox(height: 5),
+                    // The same sentence the ability's own card carries. The
+                    // whole point of the preview is deciding whether to commit
+                    // to this offspring, and gene names alone do not say what
+                    // it will actually do.
+                    Text(
+                      child.description,
+                      style: Skin.label(size: 11.5, color: Skin.text)
+                          .copyWith(height: 1.45),
+                    ),
                     const SizedBox(height: 8),
                     RiderStrip(genome: child, ramp: ramp),
                   ],
