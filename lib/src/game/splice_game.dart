@@ -95,6 +95,21 @@ class SpliceGame extends FlameGame {
 
   static const double trailerFlashSeconds = 0.42;
 
+  /// Rewinds the showcase to its first frame.
+  ///
+  /// The recording has to be able to start on cue, so the sequence is armed
+  /// rather than simply running from launch.
+  void restartTrailer() {
+    _trailerClock = 0;
+    _trailerFlash = 0;
+    _trailerSpawnTimer = 0;
+    _trailerPhase = 0;
+    _applyPhase(trailerPhases.first, clearField: true);
+  }
+
+  /// True once a full pass has played, so the recording has a definite end.
+  bool get trailerFinished => _trailerClock >= trailerSeconds;
+
   int get trailerPhase => _trailerPhase < 0 ? 0 : _trailerPhase;
   double get trailerClock => _trailerClock;
 
