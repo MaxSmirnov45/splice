@@ -1,11 +1,11 @@
 {
-    "name": "splice",
-    "short_name": "splice",
+    "name": "Splice",
+    "short_name": "Splice",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#05060D",
+    "theme_color": "#05060D",
+    "description": "Breed your abilities. The swarm is breeding too.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
