@@ -113,9 +113,14 @@ def compose(size, atlas, layout):
         s = atlas.sprite(name, scale)
         base.paste(s, (x - s.width // 2, y - s.height // 2), s)
 
-    # A soft shade under the wordmark. Their first requirement is readable
-    # content, and white letters over a bright creature are not that; a stroke
-    # alone only outlines the problem.
+    # A soft shade under the wordmark.
+    #
+    # Their first requirement is readable content, and white letters over a
+    # bright creature are not that; a stroke alone only outlines the problem.
+    #
+    # The wordmark sits along the bottom because the portal overlays its own
+    # labels across the top-left of every cover — anything placed there is
+    # covered up on the pages the cover actually appears on.
     tx, ty = layout["title"]
     shade = Image.new("L", size, 0)
     sd = ImageDraw.Draw(shade)
@@ -161,56 +166,56 @@ def swarm(cx, cy, count, radius, spread, names, scale, seed=0):
 
 
 def landscape(atlas):
-    px, py = 470, 690
+    px, py = 470, 560
     return compose((1920, 1080), atlas, dict(
-        lattice=96, bloom=22, player=(px, py), aura=232, auraWidth=7,
+        lattice=96, bloom=22, player=(px, py), aura=228, auraWidth=7,
         hostScale=13, orbScale=7, orbits=5,
         enemies=swarm(px, py, 26, (430, 1180), (-1.15, 1.15),
                       ["crawler_1", "mote_0", "spiker_0", "weaver_3",
                        "mote_2", "crawler_3", "spiker_2"], (5.5, 9))
-        + [("brute_2", (1130, 880), 12), ("elite_0", (1540, 470), 10),
-           ("spitter_0", (1500, 830), 10), ("lancer_1", (1330, 200), 10)],
-        telegraphs=[((1500, 830), (px + 130, py + 60)),
-                    ((1330, 200), (px + 110, py - 90))],
-        shots=[("fang", (1080, 700), 6), ("fang", (960, 430), 5),
-               ("shard_frost", (760, 560), 7), ("orb_frost", (880, 800), 6)],
-        title=(470, 210), titleSize=140, anchor="mm", shade=(430, 130),
+        + [("brute_2", (1120, 700), 11), ("elite_0", (1540, 380), 10),
+           ("spitter_0", (1470, 640), 9), ("lancer_1", (1310, 170), 9)],
+        telegraphs=[((1470, 640), (px + 130, py + 50)),
+                    ((1310, 170), (px + 110, py - 80))],
+        shots=[("fang", (1060, 590), 6), ("fang", (950, 360), 5),
+               ("shard_frost", (760, 450), 7), ("orb_frost", (880, 660), 6)],
+        title=(960, 880), titleSize=132, anchor="mm", shade=(760, 120),
         tagline="BREED YOUR ABILITIES", taglineSize=38, taglineGap=104,
     ))
 
 
 def portrait(atlas):
-    px, py = 400, 820
+    px, py = 400, 700
     return compose((800, 1200), atlas, dict(
         lattice=80, bloom=18, player=(px, py), aura=190, auraWidth=6,
         hostScale=11, orbScale=6, orbits=5,
         enemies=swarm(px, py, 22, (330, 620), (-2.9, 0.25),
                       ["crawler_1", "mote_0", "spiker_0", "weaver_3",
                        "mote_2", "crawler_3"], (5, 8), seed=3)
-        + [("brute_2", (160, 1060), 9), ("elite_0", (620, 500), 8),
-           ("spitter_0", (690, 990), 9), ("lancer_1", (120, 620), 9)],
-        telegraphs=[((690, 990), (px + 90, py + 70)),
-                    ((120, 620), (px - 80, py - 70))],
-        shots=[("fang", (560, 940), 5), ("fang", (250, 690), 5),
-               ("shard_frost", (520, 760), 6)],
-        title=(400, 250), titleSize=92, anchor="mm", shade=(300, 90),
+        + [("brute_2", (170, 900), 9), ("elite_0", (620, 420), 8),
+           ("spitter_0", (670, 860), 8), ("lancer_1", (130, 540), 8)],
+        telegraphs=[((670, 860), (px + 90, py + 60)),
+                    ((130, 540), (px - 80, py - 60))],
+        shots=[("fang", (550, 810), 5), ("fang", (255, 590), 5),
+               ("shard_frost", (515, 650), 6)],
+        title=(400, 1030), titleSize=88, anchor="mm", shade=(370, 84),
         tagline="BREED YOUR ABILITIES", taglineSize=25, taglineGap=70,
     ))
 
 
 def square(atlas):
-    px, py = 400, 540
+    px, py = 400, 450
     return compose((800, 800), atlas, dict(
         lattice=80, bloom=16, player=(px, py), aura=165, auraWidth=6,
         hostScale=10, orbScale=6, orbits=5,
         enemies=swarm(px, py, 18, (280, 470), (-2.85, 0.2),
                       ["crawler_1", "mote_0", "spiker_0", "weaver_3",
                        "mote_2"], (5, 7.5), seed=7)
-        + [("brute_2", (165, 700), 8), ("elite_0", (640, 320), 7),
-           ("spitter_0", (700, 640), 8)],
-        telegraphs=[((700, 640), (px + 80, py + 50))],
-        shots=[("fang", (560, 590), 5), ("shard_frost", (300, 400), 5)],
-        title=(400, 140), titleSize=84, anchor="mm", shade=(280, 84),
+        + [("brute_2", (175, 580), 8), ("elite_0", (645, 250), 7),
+           ("spitter_0", (700, 520), 8)],
+        telegraphs=[((700, 520), (px + 80, py + 40))],
+        shots=[("fang", (560, 480), 5), ("shard_frost", (300, 330), 5)],
+        title=(400, 660), titleSize=80, anchor="mm", shade=(340, 76),
         tagline="BREED YOUR ABILITIES", taglineSize=21, taglineGap=62,
     ))
 
