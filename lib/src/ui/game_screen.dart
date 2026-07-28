@@ -349,9 +349,23 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     then();
   }
 
-  void _restart() => _finishRun(() => unawaited(_doRestart()));
+  /// Guards the restart against being started twice.
+  ///
+  /// An interstitial sits between pressing the button and the next run, and an
+  /// unfilled request can take seconds to give up. Without this the player
+  /// presses again, and again, each press stacking another restart behind
+  /// another ad request — which reads as the button working "after about ten
+  /// clicks" when what actually happened is that the first one finally
+  /// returned.
+  bool _restarting = false;
+
+  void _restart() {
+    if (_restarting) return;
+    _finishRun(() => unawaited(_doRestart()));
+  }
 
   Future<void> _doRestart() async {
+    setState(() => _restarting = true);
     // Abandoning a run still banks what the player achieved in it — losing a
     // ten-minute record because you had to quit would be indefensible.
     _recordRun();
@@ -373,6 +387,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       _pendingScore = null;
       _posted = false;
       _postable = false;
+      _restarting = false;
     });
     _ads.gameplayStart();
   }
@@ -503,6 +518,7 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onRestart: _restart,
                 onExit: _quitToMenu,
                 newBest: _newBest,
+                restarting: _restarting,
                 posted: _posted,
                 postedAs: widget.save.playerName,
                 postable: _postable,
@@ -862,7 +878,8 @@ class _PauseScreenState extends State<_PauseScreen> {
     );
   }
 
-  Widget _button(String label, Color colour, VoidCallback onTap) =>
+  /// A null [onTap] renders the button dimmed and inert.
+  Widget _button(String label, Color colour, VoidCallback? onTap) =>
       GestureDetector(
         onTap: onTap,
         child: Container(
@@ -926,6 +943,10 @@ class GameOverScreen extends StatelessWidget {
   /// broken one.
   final bool postable;
 
+  /// Set while the next run is being prepared. An interstitial sits in the
+  /// way, so the button has to look busy rather than dead.
+  final bool restarting;
+
   /// Null when no scoreboard backend is configured, in which case nothing
   /// about the board is offered rather than shown and failing.
   final VoidCallback? onViewBoard;
@@ -941,6 +962,7 @@ class GameOverScreen extends StatelessWidget {
     this.posted = false,
     this.postedAs = '',
     this.postable = false,
+    this.restarting = false,
     this.onViewBoard,
   });
 
@@ -988,7 +1010,11 @@ class GameOverScreen extends StatelessWidget {
               _reviveButton(),
               const SizedBox(height: 10),
             ],
-            _button('SPLICE AGAIN', Skin.accent, onRestart),
+            _button(
+              restarting ? 'STARTING…' : 'SPLICE AGAIN',
+              Skin.accent,
+              restarting ? null : onRestart,
+            ),
             const SizedBox(height: 10),
             if (onViewBoard != null) ...[
               if (_boardNote() != null) ...[
@@ -1071,7 +1097,8 @@ class GameOverScreen extends StatelessWidget {
     );
   }
 
-  Widget _button(String label, Color colour, VoidCallback onTap) =>
+  /// A null [onTap] renders the button dimmed and inert.
+  Widget _button(String label, Color colour, VoidCallback? onTap) =>
       GestureDetector(
         onTap: onTap,
         child: Container(

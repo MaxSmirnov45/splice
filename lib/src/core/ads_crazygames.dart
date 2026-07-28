@@ -49,10 +49,29 @@ class CrazyGamesAds implements RewardedAdService {
   @override
   void Function()? onAdClosed;
 
-  /// Ads are requested on demand rather than preloaded, so readiness is simply
-  /// whether the SDK initialised.
+  /// Consecutive requests of each kind that produced no ad.
+  ///
+  /// Advertising is switched off entirely during a Basic launch, so every
+  /// request goes unfilled — and an unfilled request costs a visible wait. Left
+  /// unchecked that is six dead seconds on every single restart, and a revive
+  /// button that is offered and then quietly does nothing. After two proven
+  /// misses this stops asking: the player pays the wait once instead of
+  /// forever, and the button stops promising something it cannot deliver.
+  int _midgameMisses = 0;
+  int _rewardedMisses = 0;
+
+  /// Misses tolerated before a kind of ad is treated as unavailable. Two
+  /// rather than one, so a single transient failure does not cost the player
+  /// their revives for the whole session.
+  static const int _missesBeforeGivingUp = 2;
+
+  bool get _midgameAvailable => _midgameMisses < _missesBeforeGivingUp;
+  bool get _rewardedAvailable => _rewardedMisses < _missesBeforeGivingUp;
+
+  /// Ads are requested on demand rather than preloaded, so readiness is the
+  /// SDK being up and rewarded ads not having proven themselves absent.
   @override
-  bool get isReady => _initialised;
+  bool get isReady => _initialised && _rewardedAvailable;
 
   @override
   Future<void> initialize() async {
@@ -98,11 +117,32 @@ class CrazyGamesAds implements RewardedAdService {
     } catch (_) {}
   }
 
-  @override
-  Future<void> commercialBreak() => _requestAd('midgame');
+  /// Earliest point another interstitial may be requested.
+  ///
+  /// Portals space these out as a matter of policy, and asking on every
+  /// restart also meant paying the unfilled-request wait every restart. A
+  /// player who dies three times in a minute now sees at most one break.
+  DateTime? _nextMidgameAllowed;
+
+  /// How long to leave between interstitials.
+  static const Duration _midgameInterval = Duration(minutes: 3);
 
   @override
-  Future<bool> show() => _requestAd('rewarded');
+  Future<void> commercialBreak() async {
+    if (!_midgameAvailable) return;
+    final now = DateTime.now();
+    if (_nextMidgameAllowed != null && now.isBefore(_nextMidgameAllowed!)) {
+      return;
+    }
+    _nextMidgameAllowed = now.add(_midgameInterval);
+    await _requestAd('midgame');
+  }
+
+  @override
+  Future<bool> show() {
+    if (!_rewardedAvailable) return Future.value(false);
+    return _requestAd('rewarded');
+  }
 
   /// Seconds to wait for an ad to actually appear before giving up.
   ///
@@ -174,24 +214,58 @@ class CrazyGamesAds implements RewardedAdService {
     }
 
     var result = false;
-    if (completer.isCompleted) {
-      result = await completer.future;
-    } else if (appeared.isCompleted) {
-      // Second wait: it is on screen, so let it run.
-      result = await completer.future.timeout(
-        _finishTimeout,
-        onTimeout: () => false,
-      );
+    if (appeared.isCompleted) {
+      // Something reached the screen, so this request was filled whatever
+      // happens next.
+      _noteHit(type);
+      result = completer.isCompleted
+          ? await completer.future
+          // Second wait: it is on screen, so let it run.
+          : await completer.future.timeout(
+              _finishTimeout,
+              onTimeout: () => false,
+            );
     } else {
-      // Nothing was served. Carry on rather than hold the player.
-      debugPrint(
-        'crazygames: no $type ad appeared within '
-        '${_appearTimeout.inSeconds}s — continuing',
-      );
+      // Either an error came back before anything was shown, or nothing was
+      // served at all. Both mean the player got no ad.
+      _noteMiss(type);
+      if (!completer.isCompleted) {
+        debugPrint(
+          'crazygames: no $type ad appeared within '
+          '${_appearTimeout.inSeconds}s — continuing',
+        );
+      }
     }
 
     if (wasRunning) gameplayStart();
     return result;
+  }
+
+  void _noteHit(String type) {
+    if (type == 'rewarded') {
+      _rewardedMisses = 0;
+    } else {
+      _midgameMisses = 0;
+    }
+  }
+
+  void _noteMiss(String type) {
+    if (type == 'rewarded') {
+      _rewardedMisses++;
+      if (!_rewardedAvailable) {
+        debugPrint(
+          'crazygames: rewarded ads unavailable — no longer offering '
+          'anything that depends on one',
+        );
+      }
+    } else {
+      _midgameMisses++;
+      if (!_midgameAvailable) {
+        debugPrint(
+          'crazygames: midgame ads unavailable — no longer requesting',
+        );
+      }
+    }
   }
 
   @override
