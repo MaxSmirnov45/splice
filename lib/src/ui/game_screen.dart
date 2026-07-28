@@ -4,7 +4,6 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/gestures.dart' show PointerScrollEvent;
-import 'package:flutter/services.dart';
 
 import '../core/ads.dart';
 import '../core/leaderboard.dart';
@@ -122,6 +121,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
   /// Whether it is worth sending at all — only a personal best is.
   bool _postable = false;
 
+  /// What to do once the name prompt has been answered, one way or the other.
+  VoidCallback? _afterScore;
+
   @override
   void initState() {
     super.initState();
@@ -210,9 +212,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       kills: world.kills,
       generation: world.deepestGeneration,
     );
-    // The board asks for itself rather than waiting to be found. A run only
-    // ends once, and a player who has to go looking for a "post score" button
-    // has already stopped caring about the board.
     // Compared against the records as they stand: _recordRun folds this run in
     // later, when the player leaves the game-over screen.
     final action = endOfRunAction(
@@ -225,18 +224,16 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
         action != EndOfRunAction.nothing &&
         action != EndOfRunAction.notPersonalBest;
     _pendingScore = _postable ? _entryForRun() : null;
-    final needsName = action == EndOfRunAction.askForName;
-    if (action == EndOfRunAction.postNow) {
-      _posted = true;
-      // Not awaited: the player sees their run immediately, and a slow or
-      // failed submission never holds up the game-over screen.
-      unawaited(_submitPending());
-    }
 
+    // Nothing is posted here, and nothing is asked. Dying is not the end of a
+    // run — a revive continues it — so a score banked now could be a truncated
+    // one, and the board has no way to correct it afterwards. The prompt also
+    // opened straight over this screen, hiding the revive offer the player was
+    // being interrupted for. Both are settled in _finishRun, when the player
+    // actually walks away from the run.
     setState(() {
       _showPause = false;
       _showGameOver = true;
-      _showNamePrompt = needsName;
       _game.uiPaused = true;
     });
   }
@@ -330,7 +327,31 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     widget.save.save();
   }
 
-  Future<void> _restart() async {
+  /// Settles the leaderboard question, then runs [then].
+  ///
+  /// Called at the two points a run is genuinely over — starting another, or
+  /// leaving — rather than at the moment of death, which a revive can undo.
+  void _finishRun(VoidCallback then) {
+    if (!_postable || _posted) {
+      then();
+      return;
+    }
+    if (widget.save.playerName.trim().isEmpty) {
+      // Deferred: the prompt has to resolve before the run can be torn down,
+      // or the entry is built from a world that no longer exists.
+      _afterScore = then;
+      setState(() => _showNamePrompt = true);
+      return;
+    }
+    _posted = true;
+    // Not awaited: a slow or failed submission must not delay the next run.
+    unawaited(_submitPending());
+    then();
+  }
+
+  void _restart() => _finishRun(() => unawaited(_doRestart()));
+
+  Future<void> _doRestart() async {
     // Abandoning a run still banks what the player achieved in it — losing a
     // ten-minute record because you had to quit would be indefensible.
     _recordRun();
@@ -356,11 +377,11 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _ads.gameplayStart();
   }
 
-  void _quitToMenu() {
+  void _quitToMenu() => _finishRun(() {
     _recordRun();
     _ads.gameplayStop();
     widget.onExit();
-  }
+  });
 
   bool get _inputBlocked =>
       _showSplice ||
@@ -381,22 +402,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
       kills: w.kills,
       generation: w.deepestGeneration,
     );
-  }
-
-  /// Posts the finished run by hand.
-  ///
-  /// Only reachable when the automatic post did not happen — that is, when the
-  /// player dismissed the name prompt and later changed their mind.
-  Future<void> _postScore() async {
-    if (!_leaderboard.isAvailable || _posted || !_postable) return;
-    _pendingScore ??= _entryForRun();
-    if (widget.save.playerName.trim().isEmpty) {
-      setState(() => _showNamePrompt = true);
-      return;
-    }
-    setState(() => _posted = true);
-    await _submitPending();
-    if (mounted) setState(() => _showBoard = true);
   }
 
   Future<void> _submitPending() async {
@@ -502,9 +507,6 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 postedAs: widget.save.playerName,
                 postable: _postable,
                 onViewBoard: _leaderboard.isAvailable ? _openBoard : null,
-                onPostScore: _leaderboard.isAvailable && !_posted
-                    ? _postScore
-                    : null,
                 // Offered only when a revive remains and an ad is actually
                 // loaded, so the button never appears and then fails.
                 onReviveForAd:
@@ -519,6 +521,8 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                 onSubmit: (name) async {
                   widget.save.playerName = name;
                   widget.save.save();
+                  final then = _afterScore;
+                  _afterScore = null;
                   // Keeps the run captured when the player died — so the
                   // time on the board is the time they died at, not the time
                   // they finished typing — but takes the name they just gave.
@@ -536,10 +540,21 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
                     _showNamePrompt = false;
                     _posted = true;
                   });
-                  await _submitPending();
-                  if (mounted) setState(() => _showBoard = true);
+                  unawaited(_submitPending());
+                  if (then != null) {
+                    then();
+                  } else if (mounted) {
+                    setState(() => _showBoard = true);
+                  }
                 },
-                onSkip: () => setState(() => _showNamePrompt = false),
+                onSkip: () {
+                  final then = _afterScore;
+                  _afterScore = null;
+                  setState(() => _showNamePrompt = false);
+                  // Declining must not trap the player on the run they were
+                  // trying to leave.
+                  then?.call();
+                },
               ),
             if (_showBoard)
               LeaderboardScreen(
@@ -915,10 +930,6 @@ class GameOverScreen extends StatelessWidget {
   /// about the board is offered rather than shown and failing.
   final VoidCallback? onViewBoard;
 
-  /// Null once the run is posted, or when there is no backend. Only a player
-  /// who dismissed the name prompt ever sees this.
-  final VoidCallback? onPostScore;
-
   const GameOverScreen({
     super.key,
     required this.world,
@@ -931,7 +942,6 @@ class GameOverScreen extends StatelessWidget {
     this.postedAs = '',
     this.postable = false,
     this.onViewBoard,
-    this.onPostScore,
   });
 
   @override
@@ -980,16 +990,15 @@ class GameOverScreen extends StatelessWidget {
             ],
             _button('SPLICE AGAIN', Skin.accent, onRestart),
             const SizedBox(height: 10),
-            if (onPostScore != null) ...[
-              _button('POST TO LEADERBOARD', Skin.text, onPostScore!),
-              const SizedBox(height: 10),
-            ] else if (onViewBoard != null) ...[
-              Text(
-                _boardNote(),
-                textAlign: TextAlign.center,
-                style: Skin.label(size: 9.5, color: Skin.dim),
-              ),
-              const SizedBox(height: 8),
+            if (onViewBoard != null) ...[
+              if (_boardNote() != null) ...[
+                Text(
+                  _boardNote()!,
+                  textAlign: TextAlign.center,
+                  style: Skin.label(size: 9.5, color: Skin.dim),
+                ),
+                const SizedBox(height: 8),
+              ],
               _button('LEADERBOARD', Skin.text, onViewBoard!),
               const SizedBox(height: 10),
             ],
@@ -1000,15 +1009,21 @@ class GameOverScreen extends StatelessWidget {
     );
   }
 
-  /// What became of this run as far as the board is concerned.
-  String _boardNote() {
+  /// What became of this run as far as the board is concerned, or null while
+  /// the answer is still open.
+  ///
+  /// Null rather than "not posted yet" on purpose: at this point the player is
+  /// deciding whether to revive, and the run is only posted once they choose
+  /// not to. Announcing a pending post would be describing something that may
+  /// never happen.
+  String? _boardNote() {
     if (posted) {
       return postedAs.isEmpty
           ? 'posted to the leaderboard'
           : 'posted as $postedAs';
     }
     if (!postable) return 'only your best run goes on the board';
-    return 'not posted';
+    return null;
   }
 
   /// Continue-for-an-ad. Kept visually distinct from the plain buttons so it

@@ -104,11 +104,24 @@ class CrazyGamesAds implements RewardedAdService {
   @override
   Future<bool> show() => _requestAd('rewarded');
 
+  /// Seconds to wait for an ad to actually appear before giving up.
+  ///
+  /// An unfilled request can sit silently forever — which it does in the
+  /// portal's own preview, where nothing serves. Waiting on it froze the
+  /// button that asks for one: SPLICE AGAIN takes an interstitial on the way
+  /// through, so the player pressed it and nothing happened at all.
+  static const Duration _appearTimeout = Duration(seconds: 6);
+
+  /// Once something is on screen it may legitimately run for a while, so the
+  /// second wait is generous. It exists only so a callback that never arrives
+  /// cannot strand the player on a frozen screen forever.
+  static const Duration _finishTimeout = Duration(minutes: 3);
+
   /// Requests an ad and resolves true only when it actually completed.
   ///
   /// The SDK reports via callbacks rather than a promise, so this bridges them
-  /// into a future — with a timeout, because a callback that never fires would
-  /// otherwise strand the player on a frozen screen forever.
+  /// into a future — in two stages, because "no ad was available" and "the ad
+  /// is still playing" are indistinguishable from a single timeout.
   Future<bool> _requestAd(String type) async {
     if (!_initialised) return false;
 
@@ -117,31 +130,66 @@ class CrazyGamesAds implements RewardedAdService {
     // engagement.
     gameplayStop();
 
+    final appeared = Completer<void>();
     final completer = Completer<bool>();
+
     void finish(bool result) {
       if (completer.isCompleted) return;
-      onAdClosed?.call();
+      // Only if something was actually shown. Pairing a close with an open
+      // that never happened would resume audio nobody paused.
+      if (appeared.isCompleted) onAdClosed?.call();
       completer.complete(result);
     }
 
     try {
       final callbacks = JSObject();
       callbacks.setProperty('adFinished'.toJS, (() => finish(true)).toJS);
-      callbacks.setProperty('adError'.toJS, ((JSAny? _, JSAny? __) => finish(false)).toJS);
+      callbacks.setProperty(
+        'adError'.toJS,
+        ((JSAny? _, JSAny? reason) => finish(false)).toJS,
+      );
       // Muting and pausing here rather than at request time is the portal's
       // documented requirement: a request can sit unfilled for some time
       // before anything actually appears on screen.
-      callbacks.setProperty('adStarted'.toJS, (() => onAdOpened?.call()).toJS);
+      callbacks.setProperty(
+        'adStarted'.toJS,
+        (() {
+          if (!appeared.isCompleted) appeared.complete();
+          onAdOpened?.call();
+        }).toJS,
+      );
       _cgRequestAd(type.toJS, callbacks);
     } catch (e) {
       debugPrint('crazygames: requestAd threw ($e)');
       finish(false);
     }
 
-    final result = await completer.future.timeout(
-      const Duration(minutes: 3),
-      onTimeout: () => false,
-    );
+    // First wait: did anything reach the screen?
+    if (!completer.isCompleted) {
+      await Future.any([
+        appeared.future,
+        completer.future,
+        Future<void>.delayed(_appearTimeout),
+      ]);
+    }
+
+    var result = false;
+    if (completer.isCompleted) {
+      result = await completer.future;
+    } else if (appeared.isCompleted) {
+      // Second wait: it is on screen, so let it run.
+      result = await completer.future.timeout(
+        _finishTimeout,
+        onTimeout: () => false,
+      );
+    } else {
+      // Nothing was served. Carry on rather than hold the player.
+      debugPrint(
+        'crazygames: no $type ad appeared within '
+        '${_appearTimeout.inSeconds}s — continuing',
+      );
+    }
+
     if (wasRunning) gameplayStart();
     return result;
   }

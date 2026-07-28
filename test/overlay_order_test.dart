@@ -12,6 +12,10 @@ import 'package:splice/src/ui/game_screen.dart';
 /// opened *underneath* it: present in the tree, findable by every text finder,
 /// and completely unreachable by the player.
 ///
+/// The prompt is now raised when the player leaves the run rather than the
+/// moment they die — dying is not the end of a run when a revive is on offer,
+/// and the prompt covered that offer outright.
+///
 /// That is why this asserts a real tap lands rather than that the widget
 /// exists. `find.text` is satisfied by a widget buried under an opaque panel.
 ///
@@ -103,8 +107,16 @@ void main() {
     }
 
     expect(find.text('CONSUMED'), findsOneWidget, reason: 'the run must end');
+    expect(find.text('POST YOUR RUN'), findsNothing,
+        reason: 'dying is not the end of a run — the revive offer comes first');
+
+    // Walking away from the run is what settles the score.
+    await tester.tap(find.text('SPLICE AGAIN'));
+    for (var i = 0; i < 6; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     expect(find.text('POST YOUR RUN'), findsOneWidget,
-        reason: 'a player with no name must be asked for one');
+        reason: 'a player leaving the run must be asked for a name');
 
     // The real assertion. A tap that gets swallowed by an overlay above the
     // prompt reports a hit-test miss, which is exactly the bug.

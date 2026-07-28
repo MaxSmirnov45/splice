@@ -5,7 +5,7 @@ import 'package:splice/src/ui/game_screen.dart';
 
 /// A run ends once, so the leaderboard has exactly one chance to ask.
 ///
-/// This file exists because an `onPostScore` callback was threaded all the way
+/// This file exists because a post-score callback was threaded all the way
 /// into the game-over screen and then never rendered — for a while no finished
 /// run could reach the board at all, and nothing caught it.
 void main() {
@@ -71,8 +71,8 @@ void main() {
       bool posted = false,
       String postedAs = '',
       bool postable = false,
-      VoidCallback? onPostScore,
       VoidCallback? onViewBoard,
+      VoidCallback? onReviveForAd,
     }) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -84,8 +84,8 @@ void main() {
             posted: posted,
             postedAs: postedAs,
             postable: postable,
-            onPostScore: onPostScore,
             onViewBoard: onViewBoard,
+            onReviveForAd: onReviveForAd,
           ),
         ),
       );
@@ -107,15 +107,26 @@ void main() {
       expect(opened, isTrue);
     });
 
-    testWidgets('offers a way back for a player who declined the name prompt', (
-      tester,
-    ) async {
-      var pressed = false;
-      await pump(tester, postable: true, onPostScore: () => pressed = true);
+    // While the player is still deciding whether to revive, the run is not
+    // over and has not been posted. Saying anything about it would describe
+    // something that may never happen.
+    testWidgets('stays quiet about a run still in the balance', (tester) async {
+      await pump(tester, postable: true, onViewBoard: () {});
+      expect(find.text('LEADERBOARD'), findsOneWidget);
+      expect(find.textContaining('posted'), findsNothing);
+      expect(find.textContaining('only your best'), findsNothing);
+    });
 
-      expect(find.text('POST TO LEADERBOARD'), findsOneWidget);
-      await tester.tap(find.text('POST TO LEADERBOARD'));
-      expect(pressed, isTrue);
+    // The name prompt used to open on top of this screen the instant the
+    // player died, covering the one button they had to reach in time.
+    testWidgets('the revive offer is never buried', (tester) async {
+      await pump(
+        tester,
+        postable: true,
+        onViewBoard: () {},
+        onReviveForAd: () {},
+      );
+      expect(find.text('REVIVE'), findsOneWidget);
     });
 
     // A run that quietly does not post is indistinguishable from one that
@@ -128,18 +139,12 @@ void main() {
         findsOneWidget,
         reason: 'the board is still worth a look',
       );
-      expect(
-        find.text('POST TO LEADERBOARD'),
-        findsNothing,
-        reason: 'offering to post a run that will be rejected is a lie',
-      );
     });
 
     testWidgets('never mentions the board when there is no backend', (
       tester,
     ) async {
       await pump(tester);
-      expect(find.text('POST TO LEADERBOARD'), findsNothing);
       expect(find.text('LEADERBOARD'), findsNothing);
       expect(
         find.text('CONSUMED'),
@@ -148,17 +153,5 @@ void main() {
       );
     });
 
-    testWidgets('does not offer to post a run it already posted', (
-      tester,
-    ) async {
-      await pump(
-        tester,
-        posted: true,
-        postedAs: 'maxim',
-        postable: true,
-        onViewBoard: () {},
-      );
-      expect(find.text('POST TO LEADERBOARD'), findsNothing);
-    });
   });
 }
