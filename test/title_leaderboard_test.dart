@@ -81,6 +81,21 @@ void main() {
     expect(find.textContaining('posting as maxim'), findsOneWidget);
   });
 
+  // CrazyGames asks for an in-game mention of what the game stores, and this
+  // game does publish a name the player types. It has to be reachable before
+  // they are ever asked for one.
+  testWidgets('what the game stores is reachable from the title screen', (
+    tester,
+  ) async {
+    await pump(tester, _FakeBoard());
+    await tester.tap(find.text('what this game stores'));
+    await tester.pump();
+
+    expect(find.text('PRIVACY'), findsOneWidget);
+    expect(find.text('YOUR NAME IS PUBLIC'), findsOneWidget);
+    expect(find.textContaining('No accounts, no tracking'), findsOneWidget);
+  });
+
   testWidgets('a player who never posted is invited to set a name',
       (tester) async {
     await pump(tester, _FakeBoard());

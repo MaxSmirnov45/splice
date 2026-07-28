@@ -277,7 +277,9 @@ class NamePrompt extends StatefulWidget {
     required this.onSubmit,
     required this.onSkip,
     this.title = 'POST YOUR RUN',
-    this.blurb = 'Pick a name for the global leaderboard.',
+    this.blurb =
+        'Pick a name for the global leaderboard. It is public, so '
+        'there is no reason to use your real one.',
     this.action = 'POST',
   });
 

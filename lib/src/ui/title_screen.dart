@@ -9,6 +9,7 @@ import '../core/save.dart';
 import '../genome/genome.dart';
 import 'ability_card.dart';
 import 'leaderboard_screen.dart';
+import 'privacy_screen.dart';
 import 'sigil.dart';
 
 /// Front screen: identity, records, and one button.
@@ -43,6 +44,7 @@ class _TitleScreenState extends State<TitleScreen>
       widget.leaderboard ?? createLeaderboard();
   bool _showBoard = false;
   bool _showNamePrompt = false;
+  bool _showPrivacy = false;
 
   void _openBoard() => setState(() => _showBoard = true);
 
@@ -174,9 +176,29 @@ class _TitleScreenState extends State<TitleScreen>
                   textAlign: TextAlign.center,
                   style: Skin.label(size: 9, color: Skin.dim),
                 ),
+                const SizedBox(height: 10),
+                // Reachable before the player is ever asked for a name, since
+                // that name is the only thing the game ever publishes.
+                GestureDetector(
+                  onTap: () => setState(() => _showPrivacy = true),
+                  behavior: HitTestBehavior.opaque,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Text(
+                      'what this game stores',
+                      textAlign: TextAlign.center,
+                      style: Skin.label(
+                        size: 9,
+                        color: Skin.dim,
+                      ).copyWith(decoration: TextDecoration.underline),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
+          if (_showPrivacy)
+            PrivacyScreen(onClose: () => setState(() => _showPrivacy = false)),
           if (_showBoard)
             LeaderboardScreen(
               leaderboard: _leaderboard,
