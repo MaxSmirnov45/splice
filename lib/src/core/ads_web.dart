@@ -49,6 +49,10 @@ class PokiAds implements RewardedAdService {
   @override
   void Function()? onAdClosed;
 
+  /// Poki carries no documented mute control of its own.
+  @override
+  void Function(bool muted)? onHostMuteChanged;
+
   /// Poki's rewarded break is requested on demand rather than preloaded, so
   /// there is nothing to poll — availability is simply whether the SDK exists.
   @override

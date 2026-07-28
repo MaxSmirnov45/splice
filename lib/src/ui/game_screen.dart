@@ -148,6 +148,9 @@ class _GameScreenState extends State<GameScreen> with WidgetsBindingObserver {
     _ads.onAdClosed = () {
       _game.sfx.resumeAmbient();
     };
+    // The host's own mute control overrides the player's levels while it is
+    // on, and restores exactly those levels when it goes off.
+    _ads.onHostMuteChanged = (muted) => _game.sfx.setHostMuted(muted);
     // Fire and forget: a missing or failing ad network simply means the revive
     // option is never offered.
     _ads.initialize();

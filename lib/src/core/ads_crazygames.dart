@@ -29,6 +29,12 @@ external void _cgGameplayStop();
 @JS('CrazyGames.SDK.ad.requestAd')
 external void _cgRequestAd(JSString type, JSObject callbacks);
 
+@JS('CrazyGames.SDK.game.addSettingsChangeListener')
+external void _cgAddSettingsListener(JSFunction listener);
+
+@JS('CrazyGames.SDK.game.removeSettingsChangeListener')
+external void _cgRemoveSettingsListener(JSFunction listener);
+
 bool get _sdkPresent {
   try {
     if (!globalContext.has('CrazyGames')) return false;
@@ -48,6 +54,12 @@ class CrazyGamesAds implements RewardedAdService {
   void Function()? onAdOpened;
   @override
   void Function()? onAdClosed;
+  @override
+  void Function(bool muted)? onHostMuteChanged;
+
+  /// Held so it can be removed on dispose — the SDK matches listeners by
+  /// identity, and a fresh closure would never unregister the original.
+  JSFunction? _settingsListener;
 
   /// Consecutive requests of each kind that produced no ad.
   ///
@@ -83,6 +95,7 @@ class CrazyGamesAds implements RewardedAdService {
       await _cgInit().toDart;
       _initialised = true;
       _cgLoadingStart();
+      _watchSettings();
     } catch (e) {
       debugPrint('crazygames: init failed ($e)');
       _initialised = false;
@@ -268,8 +281,53 @@ class CrazyGamesAds implements RewardedAdService {
     }
   }
 
+  /// Mirrors the portal's own mute control into the game.
+  ///
+  /// The current value is read once up front as well as subscribed to: a
+  /// player who muted the portal on a previous game arrives with it already
+  /// on, and would otherwise hear the game until they toggled it twice.
+  void _watchSettings() {
+    _report(_readMuteAudio());
+    try {
+      final listener = ((JSAny? _) => _report(_readMuteAudio())).toJS;
+      _settingsListener = listener;
+      _cgAddSettingsListener(listener);
+    } catch (e) {
+      debugPrint('crazygames: settings listener unavailable ($e)');
+    }
+  }
+
+  void _report(bool? muted) {
+    if (muted == null) return;
+    onHostMuteChanged?.call(muted);
+  }
+
+  /// Reads `CrazyGames.SDK.game.settings.muteAudio`, or null if the shape is
+  /// not what the documentation describes.
+  bool? _readMuteAudio() {
+    try {
+      final cg = globalContext.getProperty('CrazyGames'.toJS) as JSObject?;
+      final sdk = cg?.getProperty('SDK'.toJS) as JSObject?;
+      final game = sdk?.getProperty('game'.toJS) as JSObject?;
+      final settings = game?.getProperty('settings'.toJS) as JSObject?;
+      final value = settings?.getProperty('muteAudio'.toJS);
+      if (value == null) return null;
+      return (value as JSBoolean).toDart;
+    } catch (e) {
+      debugPrint('crazygames: could not read muteAudio ($e)');
+      return null;
+    }
+  }
+
   @override
   void dispose() {
     gameplayStop();
+    final listener = _settingsListener;
+    if (listener != null) {
+      _settingsListener = null;
+      try {
+        _cgRemoveSettingsListener(listener);
+      } catch (_) {}
+    }
   }
 }

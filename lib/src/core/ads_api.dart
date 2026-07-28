@@ -25,6 +25,14 @@ abstract class RewardedAdService {
   void Function()? onAdOpened;
   void Function()? onAdClosed;
 
+  /// Called when the host platform's own mute control changes.
+  ///
+  /// Portals carry a mute button in their chrome and require it to override
+  /// the game's own audio settings, so this is not advisory — a game that
+  /// keeps playing through it is not compliant. Hosts without such a control
+  /// never call it.
+  void Function(bool muted)? onHostMuteChanged;
+
   // --- session hooks -------------------------------------------------------
   //
   // Web portals want to know when the player is actually playing, so they can
@@ -58,6 +66,10 @@ class DisabledAds implements RewardedAdService {
   void Function()? get onAdClosed => null;
   @override
   set onAdClosed(void Function()? _) {}
+  @override
+  void Function(bool muted)? get onHostMuteChanged => null;
+  @override
+  set onHostMuteChanged(void Function(bool muted)? _) {}
 
   @override
   bool get isReady => false;

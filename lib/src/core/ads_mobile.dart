@@ -33,6 +33,11 @@ class AdMobRewardedAds implements RewardedAdService {
   @override
   void Function()? onAdClosed;
 
+  /// The app stores have no host-level mute control; the OS volume is the
+  /// only one, and it applies below the app.
+  @override
+  void Function(bool muted)? onHostMuteChanged;
+
   RewardedAd? _ad;
   bool _loading = false;
   int _failures = 0;

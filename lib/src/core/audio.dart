@@ -76,11 +76,32 @@ class Sfx {
   double _soundVolume = 0.85;
   double _musicVolume = 0.55;
 
+  /// Silenced by the host platform rather than by the player.
+  ///
+  /// Portals carry their own mute control and require it to override the
+  /// game's settings, so this gates output while leaving the player's levels
+  /// untouched — unmuting has to restore exactly the sliders they set, not a
+  /// default.
+  bool _hostMuted = false;
+
   double get soundVolume => _soundVolume;
   double get musicVolume => _musicVolume;
 
-  bool get soundEnabled => _soundVolume > 0.001;
-  bool get musicEnabled => _musicVolume > 0.001;
+  /// The levels actually sent to the players.
+  double get _outSound => _hostMuted ? 0.0 : _soundVolume;
+  double get _outMusic => _hostMuted ? 0.0 : _musicVolume;
+
+  bool get soundEnabled => _outSound > 0.001;
+  bool get musicEnabled => _outMusic > 0.001;
+
+  /// Applies the host's mute state. Idempotent, since a portal may re-send the
+  /// same settings for unrelated reasons.
+  Future<void> setHostMuted(bool muted) async {
+    if (_hostMuted == muted) return;
+    _hostMuted = muted;
+    await _applySoundVolume();
+    await _applyMusicVolume();
+  }
 
   bool _ready = false;
 
@@ -130,7 +151,7 @@ class Sfx {
           // Volume is set once here, not on every play. Doing it per play
           // tripled the number of platform-channel calls for no benefit —
           // these levels never change at runtime.
-          await p.setVolume((_gain[entry.key] ?? 0.5) * _soundVolume);
+          await p.setVolume((_gain[entry.key] ?? 0.5) * _outSound);
           players.add(p);
         }
         _pools[entry.key] = players;
@@ -261,9 +282,13 @@ class Sfx {
   /// only changes when someone drags a slider on a paused game.
   Future<void> setSoundVolume(double value) async {
     _soundVolume = value.clamp(0.0, 1.0);
+    await _applySoundVolume();
+  }
+
+  Future<void> _applySoundVolume() async {
     if (!_ready) return;
     for (final entry in _pools.entries) {
-      final gain = (_gain[entry.key] ?? 0.5) * _soundVolume;
+      final gain = (_gain[entry.key] ?? 0.5) * _outSound;
       for (final p in entry.value) {
         try {
           await p.setVolume(gain);
@@ -278,7 +303,11 @@ class Sfx {
   /// running silently and holding a player slot.
   Future<void> setMusicVolume(double value) async {
     _musicVolume = value.clamp(0.0, 1.0);
-    if (_musicVolume <= 0.001) {
+    await _applyMusicVolume();
+  }
+
+  Future<void> _applyMusicVolume() async {
+    if (_outMusic <= 0.001) {
       await stopAmbient();
       return;
     }
@@ -287,7 +316,7 @@ class Sfx {
       return;
     }
     try {
-      await _ambient!.setVolume(_musicVolume);
+      await _ambient!.setVolume(_outMusic);
     } catch (_) {
       // Ignore; the level applies on the next start.
     }
@@ -306,7 +335,7 @@ class Sfx {
     if (!_ready || !musicEnabled || _ambient != null) return;
     try {
       _ambient = AudioPlayer(playerId: 'ambient')..setReleaseMode(ReleaseMode.loop);
-      await _ambient!.setVolume(_musicVolume);
+      await _ambient!.setVolume(_outMusic);
       await _ambient!.play(AssetSource('sfx/ambient.m4a'));
     } catch (_) {
       _ambient = null;
