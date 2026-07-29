@@ -188,6 +188,13 @@ class Enemy {
   /// primary could never land a hit.
   final Float32List hitCooldown = Float32List(maxAbilitySlots * 2);
 
+  /// Seconds since this body was spawned.
+  ///
+  /// Distinct from [phase], which stops advancing while the enemy is stunned.
+  /// Animation needs a clock that never pauses, or a stunned creature freezes
+  /// mid-stride and the whole swarm hitches together.
+  double age = 0;
+
   /// Behaviour state: phase for weaving, timer for lunging.
   double phase = 0;
   double actionTimer = 0;
@@ -231,6 +238,7 @@ class Enemy {
     corrodeTime = 0;
     stunTime = 0;
     flash = 0;
+    age = 0;
     phase = 0;
     actionTimer = 0;
     // Staggered so a wave that spawns together does not fire in unison.

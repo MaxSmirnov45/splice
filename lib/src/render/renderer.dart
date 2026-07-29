@@ -32,6 +32,12 @@ class Renderer {
   final SpriteBatch _opaque = SpriteBatch();
   final SpriteBatch _additive = SpriteBatch();
 
+  /// Sprites queued on the last frame, split by pass. Diagnostic only — the
+  /// backdrop is easy to make expensive by accident, since a lattice's cost
+  /// grows with the square of how fine it is.
+  int get opaqueSprites => _opaque.count;
+  int get additiveSprites => _additive.count;
+
   final ui.Paint _opaquePaint = ui.Paint()..filterQuality = ui.FilterQuality.none;
   final ui.Paint _additivePaint = ui.Paint()
     ..filterQuality = ui.FilterQuality.none
@@ -67,6 +73,7 @@ class Renderer {
   };
 
   late final ui.Rect _hostFrame = atlas.frame('host_0');
+  late final ui.Rect _shadowFrame = atlas.frame('shadow');
   late final ui.Rect _dotFrame = atlas.frame('dot_white');
   late final ui.Rect _xpSmallFrame = atlas.frame('xp_small');
   late final ui.Rect _xpLargeFrame = atlas.frame('xp_large');
@@ -129,22 +136,57 @@ class Renderer {
 
   // --- layers -------------------------------------------------------------
 
-  /// A faint dot lattice. Without it the player has no sense of motion in an
-  /// empty region of an infinite plane.
+  /// The backdrop: two lattices at different depths, and a slow drift of
+  /// large soft lights behind them.
+  ///
+  /// A single lattice moving exactly with the camera gives motion but no
+  /// space — the plane reads as a sheet of graph paper pressed against the
+  /// screen. A second, finer layer running at a fraction of the camera's
+  /// speed produces parallax, and parallax is the only cue an infinite flat
+  /// plane has for depth.
+  ///
+  /// Both are drawn into the opaque batch, so the whole backdrop still costs
+  /// nothing beyond the vertices.
   void _drawBackdrop(World world) {
-    const spacing = 64.0;
-    final left = world.px - world.viewHalfWidth - spacing;
-    final right = world.px + world.viewHalfWidth + spacing;
-    final top = world.py - world.viewHalfHeight - spacing;
-    final bottom = world.py + world.viewHalfHeight + spacing;
+    final dot = _dotFrame;
+
+    // Far layer: denser, dimmer, and lagging the camera.
+    const farSpacing = 48.0;
+    const farParallax = 0.45;
+    final fx = world.px * farParallax;
+    final fy = world.py * farParallax;
+    _lattice(dot, world, farSpacing, fx - world.px, fy - world.py,
+        scale: 0.55, color: 0x1A4E7C96);
+
+    // Near layer: the original lattice, locked to the world.
+    _lattice(dot, world, 64.0, 0, 0, scale: 0.85, color: 0x2A6FA8C0);
+
+    // A few large, very faint lights drifting behind everything. They give the
+    // eye something to pass, which is what turns "the camera is moving" into
+    // "the world is large".
+    final glow = _payloadFrames[Payload.voidp.index].burst;
+    for (var i = 0; i < 3; i++) {
+      final t = world.time * (0.013 + i * 0.004) + i * 2.1;
+      final gx = world.px * 0.22 + math.cos(t) * 420 + i * 190;
+      final gy = world.py * 0.22 + math.sin(t * 0.8) * 380 - i * 150;
+      _additive.add(glow, gx, gy, scale: 26.0 + i * 7, color: 0x0AFFFFFF);
+    }
+  }
+
+  /// One lattice of dots covering the view, offset by a parallax shift.
+  void _lattice(ui.Rect dot, World world, double spacing, double ox, double oy,
+      {required double scale, required int color}) {
+    final left = world.px - world.viewHalfWidth - spacing - ox;
+    final right = world.px + world.viewHalfWidth + spacing - ox;
+    final top = world.py - world.viewHalfHeight - spacing - oy;
+    final bottom = world.py + world.viewHalfHeight + spacing - oy;
 
     final startX = (left / spacing).floor() * spacing;
     final startY = (top / spacing).floor() * spacing;
-    final dot = _dotFrame;
 
     for (var y = startY; y <= bottom; y += spacing) {
       for (var x = startX; x <= right; x += spacing) {
-        _opaque.add(dot, x, y, scale: 0.85, color: 0x2A6FA8C0);
+        _opaque.add(dot, x + ox, y + oy, scale: scale, color: color);
       }
     }
   }
@@ -374,11 +416,63 @@ class Renderer {
     }
   }
 
+  /// Vertical bob, body lean and breathing, derived from a creature's own
+  /// clock and speed.
+  ///
+  /// Procedural rather than baked frames. Animating ten archetypes by hand
+  /// would multiply the atlas several times over for a swarm whose members are
+  /// mostly a few dozen pixels across; and a shared clock would have two
+  /// hundred creatures bobbing in perfect unison, which reads worse than not
+  /// animating them at all. Every creature carries its own phase, so the swarm
+  /// moves like a crowd instead of a chorus line.
+  ///
+  /// The batch can express rotation and uniform scale — an RSTransform — so
+  /// there is no true squash here. Bob plus lean plus a breath does most of
+  /// the work anyway: what sells a walk cycle at this size is the rhythm, not
+  /// the deformation.
+  ({double lift, double tilt, double scale}) _gait(Enemy e) {
+    // Phase seeded from the spawn variant, so neighbours are out of step.
+    final phase = e.age * 9.0 + e.variant * 1.7;
+    final speed = math.sqrt(e.vx * e.vx + e.vy * e.vy);
+    // Normalised against the archetype's own pace, so a brute lumbers and a
+    // mote skitters rather than both bouncing identically.
+    final effort = (speed / (e.def.speed + 1)).clamp(0.0, 1.6);
+
+    // Two bobs per stride: a body rises on each footfall, not once per cycle.
+    final lift = math.sin(phase * 2) * e.radius * 0.09 * effort;
+    final tilt = math.sin(phase) * 0.13 * effort;
+    // A slow breath underneath, so even a stationary creature is not a
+    // photograph.
+    final breath = 1 + math.sin(e.age * 2.1 + e.variant) * 0.022;
+    // Newly spawned creatures swell into place rather than appearing.
+    final entry = e.age < 0.22 ? 0.55 + (e.age / 0.22) * 0.45 : 1.0;
+    return (lift: lift, tilt: tilt, scale: breath * entry);
+  }
+
   void _drawEnemies(World world) {
+    // Shadows first, as one run, so no creature is ever drawn beneath a
+    // neighbour's shadow.
+    final shadow = _shadowFrame;
+    for (final e in world.enemies) {
+      if (!e.alive) continue;
+      final g = _gait(e);
+      // The shadow stays put while the body rises off it, which is what makes
+      // the bob read as leaving the ground.
+      final lift = -g.lift;
+      _opaque.add(
+        shadow,
+        e.x + e.radius * 0.16,
+        e.y + e.radius * 0.72,
+        scale: e.radius / 13.0 * (1 - lift / (e.radius * 0.5) * 0.12),
+        color: 0x66FFFFFF,
+      );
+    }
+
     for (final e in world.enemies) {
       if (!e.alive) continue;
       final variants = _enemyFrames[e.def.archetype]!;
       final frame = variants[e.variant % variants.length];
+      final gait = _gait(e);
 
       // Damage flash: tint toward white briefly on hit.
       var color = 0xFFFFFFFF;
@@ -399,24 +493,48 @@ class Renderer {
         color = 0xFF9BD8FF;
       }
 
-      _opaque.add(frame, e.x + ox, e.y + oy, color: color);
+      // A hit punches the body outward for an instant. Colour alone reads as a
+      // lighting change; a size change reads as impact.
+      final hit = e.flash > 0 ? (e.flash / 0.12).clamp(0.0, 1.0) : 0.0;
+      final scale = gait.scale * (1 + hit * 0.14);
 
-      if (e.flash > 0) {
-        final t = (e.flash / 0.12).clamp(0.0, 1.0);
-        _additive.add(frame, e.x + ox, e.y + oy,
-            color: ((160 * t).round() << 24) | 0x00FFFFFF);
+      final bx = e.x + ox;
+      final by = e.y + oy - gait.lift;
+      _opaque.add(frame, bx, by,
+          scale: scale, rotation: gait.tilt, color: color);
+
+      if (hit > 0) {
+        _additive.add(frame, bx, by,
+            scale: scale,
+            rotation: gait.tilt,
+            color: ((160 * hit).round() << 24) | 0x00FFFFFF);
       }
     }
   }
 
   void _drawPlayer(World world) {
     final frame = _hostFrame;
+
+    // The host gets the same treatment as the swarm, at a slightly livelier
+    // cadence — it is the one thing on screen the player is always watching,
+    // and a static protagonist in a moving crowd looks broken.
+    final moving = world.isMoving;
+    final phase = world.time * 11.0;
+    final lift = moving ? math.sin(phase * 2) * World.playerRadius * 0.10 : 0.0;
+    final tilt = moving ? math.sin(phase) * 0.11 : 0.0;
+    final breath = 1 + math.sin(world.time * 2.4) * 0.026;
+
+    _opaque.add(_shadowFrame, world.px + World.playerRadius * 0.16,
+        world.py + World.playerRadius * 0.74,
+        scale: World.playerRadius / 12.0, color: 0x77FFFFFF);
+
     // Blink through invulnerability frames after taking a hit.
-    if (world.invulnerable > 0 && (world.invulnerable * 18).floor() % 2 == 0) {
-      _opaque.add(frame, world.px, world.py, color: 0xFF808080);
-    } else {
-      _opaque.add(frame, world.px, world.py);
-    }
+    final blinking =
+        world.invulnerable > 0 && (world.invulnerable * 18).floor() % 2 == 0;
+    _opaque.add(frame, world.px, world.py - lift,
+        scale: breath,
+        rotation: tilt,
+        color: blinking ? 0xFF808080 : 0xFFFFFFFF);
   }
 
   void _drawParticles(World world) {

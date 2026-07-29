@@ -826,6 +826,7 @@ class World {
       for (var s = 0; s < e.hitCooldown.length; s++) {
         if (e.hitCooldown[s] > 0) e.hitCooldown[s] -= dt;
       }
+      e.age += dt;
       if (e.flash > 0) e.flash -= dt;
       if (e.slowTime > 0) {
         e.slowTime -= dt;

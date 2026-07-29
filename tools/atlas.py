@@ -143,6 +143,25 @@ def barb(size, palette):
     return _apply_glow(img, ramp)
 
 
+def shadow(diameter):
+    """A soft dark ellipse, wider than it is tall.
+
+    Squashed because the camera looks down at a shallow angle rather than
+    straight down — the same reason the creatures are lit from the upper left
+    instead of from directly above.
+    """
+    pad = diameter
+    dim = diameter + pad * 2
+    img = Image.new("RGBA", (dim, dim), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    c = (dim - 1) / 2.0
+    rx = diameter / 2.0
+    ry = rx * 0.52
+    d.ellipse([c - rx, c - ry, c + rx, c + ry], fill=(0, 0, 0, 190))
+    img = img.filter(ImageFilter.GaussianBlur(diameter * 0.22))
+    return img
+
+
 def build_sprites():
     """Return an ordered {name: RGBA image} of everything the game draws."""
     out = {}
@@ -168,6 +187,11 @@ def build_sprites():
     out["heal"] = glow_dot(8, "acid")
     out["ring_white"] = ring(30, 2, "bone")
     out["dot_white"] = glow_dot(3, "bone")
+
+    # Contact shadow. Creatures drawn straight onto the backdrop float on it;
+    # a soft dark ellipse beneath each one is the cheapest way to plant them
+    # on a surface, and in a dense swarm it also separates overlapping bodies.
+    out["shadow"] = shadow(26)
 
     # Enemy fire. Deliberately unlike every player effect: player projectiles
     # are smooth orbs, shards and rings, so incoming gets a barbed star that
