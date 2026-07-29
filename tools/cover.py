@@ -220,11 +220,35 @@ def square(atlas):
     ))
 
 
+def itch(atlas):
+    """itch.io's own cover ratio: 630x500, near enough 5:4.
+
+    Squarer than the portal covers, so the swarm wraps further around the
+    player rather than streaming in from one side.
+    """
+    px, py = 315, 250
+    return compose((630, 500), atlas, dict(
+        lattice=64, bloom=14, player=(px, py), aura=118, auraWidth=4,
+        hostScale=7, orbScale=4, orbits=5,
+        enemies=swarm(px, py, 20, (170, 330), (-3.14, 3.14),
+                      ["crawler_1", "mote_0", "spiker_0", "weaver_3",
+                       "mote_2", "crawler_3"], (3.5, 5.5), seed=11)
+        + [("brute_2", (95, 400), 6), ("elite_0", (540, 120), 6),
+           ("spitter_0", (560, 380), 5), ("lancer_1", (80, 110), 5)],
+        telegraphs=[((560, 380), (px + 60, py + 40)),
+                    ((80, 110), (px - 55, py - 40))],
+        shots=[("fang", (450, 330), 4), ("fang", (200, 160), 3),
+               ("shard_frost", (395, 215), 4)],
+        title=(315, 425), titleSize=54, anchor="mm", shade=(300, 52),
+        tagline="BREED YOUR ABILITIES", taglineSize=16, taglineGap=42,
+    ))
+
+
 def main():
     os.makedirs(ART, exist_ok=True)
     atlas = Atlas()
     for name, build in (("landscape", landscape), ("portrait", portrait),
-                        ("square", square)):
+                        ("square", square), ("itch", itch)):
         img = build(atlas)
         path = os.path.join(ART, f"cover-{name}.png")
         img.save(path)
